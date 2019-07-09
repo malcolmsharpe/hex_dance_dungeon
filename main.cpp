@@ -94,8 +94,14 @@ SDL_Window * win = NULL;
 TTF_Font * font = NULL;
 SDL_Renderer * ren = NULL;
 
+sdl_ptr<SDL_Texture> tile_floor;
+int tile_floor_w;
+int tile_floor_h;
+
 void cleanup()
 {
+    tile_floor.reset();
+
     if (ren) SDL_DestroyRenderer(ren);
     if (font) TTF_CloseFont(font);
     if (win) SDL_DestroyWindow(win);
@@ -168,46 +174,69 @@ void update()
             // j   l
             //  m ,
             if (e.key.keysym.sym == SDLK_i) {
-                move_player(1, -1);
+                move_player(-1, 1);
             }
             if (e.key.keysym.sym == SDLK_o) {
-                move_player(1, 0);
-            }
-            if (e.key.keysym.sym == SDLK_j) {
-                move_player(0, -1);
-            }
-            if (e.key.keysym.sym == SDLK_l) {
                 move_player(0, 1);
             }
-            if (e.key.keysym.sym == SDLK_m) {
+            if (e.key.keysym.sym == SDLK_j) {
                 move_player(-1, 0);
             }
+            if (e.key.keysym.sym == SDLK_l) {
+                move_player(1, 0);
+            }
+            if (e.key.keysym.sym == SDLK_m) {
+                move_player(0, -1);
+            }
             if (e.key.keysym.sym == SDLK_COMMA) {
-                move_player(-1, 1);
+                move_player(1, -1);
             }
         }
     }
 }
 
-void drawtilerect(int x, int y, int w, int h)
-{
-    SDL_Rect rect;
-    rect.x = x;
-    rect.y = y;
-    rect.w = w;
-    rect.h = h;
-    CHECK_SDL(SDL_RenderFillRect(ren, &rect));
-}
+int const HORIZONTAL_HALF_PERIOD_PX = 37;
+int const VERTICAL_HALF_PERIOD_PX = 60;
 
-void drawtile(int x, int y)
+void hex_to_pixel(int s, int t, int * x_px, int * y_px)
 {
-    drawtilerect(x, y, 1, 1);
+    int p = -s-t;
+
+    int origin_x_px = WIN_WIDTH/2;
+    int origin_y_px = WIN_HEIGHT/2;
+
+    *x_px = origin_x_px + HORIZONTAL_HALF_PERIOD_PX * (s - p);
+    *y_px = origin_y_px - VERTICAL_HALF_PERIOD_PX * t;
 }
 
 void render()
 {
     CHECK_SDL(SDL_SetRenderDrawColor(ren, 0, 0, 0, 255));
     CHECK_SDL(SDL_RenderClear(ren));
+
+    //// draw floor
+    FOR(row, 5) {
+        int s_lo = std::max(-row, -2);
+        int s_hi = std::min(2, 4-row) + 1;
+
+        int t = row-2;
+
+        FR(s, s_lo, s_hi) {
+            int x_px, y_px;
+            hex_to_pixel(s, t, &x_px, &y_px);
+
+            SDL_Rect dstrect = { x_px - tile_floor_w/2, y_px - tile_floor_h/2, tile_floor_w, tile_floor_h };
+            SDL_RenderCopy(ren, tile_floor.get(), NULL, &dstrect);
+        }
+    }
+
+    //// draw player
+    int player_x_px, player_y_px;
+    hex_to_pixel(player_s, player_t, &player_x_px, &player_y_px);
+    int player_w_px=64, player_h_px=64;
+    CHECK_SDL(SDL_SetRenderDrawColor(ren, 255, 255, 255, 255));
+    SDL_Rect rect = { player_x_px - player_w_px/2, player_y_px - player_h_px/2, player_w_px, player_h_px };
+    CHECK_SDL(SDL_RenderFillRect(ren, &rect));
 
     //// diagnostics
     CHECK_SDL(SDL_SetRenderDrawColor(ren, 255, 255, 255, 255));
@@ -255,6 +284,10 @@ int main()
 
     ren = SDL_CreateRenderer(win, -1, 0);
     if (!ren) failSDL("SDL_CreateRenderer");
+
+    // load textures
+    tile_floor.reset(LoadTexture(ren, "data/tile_floor.png"));
+    CHECK_SDL(SDL_QueryTexture(tile_floor.get(), NULL, NULL, &tile_floor_w, &tile_floor_h));
 
     // init game
     player_s = 0;
