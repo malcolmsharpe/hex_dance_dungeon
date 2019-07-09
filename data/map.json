@@ -1,0 +1,49 @@
+{
+    "player_s": -1,
+    "player_t": 1,
+    "tiles": [
+        {"s": -3, "t":  3, "type": "wall"},
+        {"s": -2, "t":  3, "type": "wall"},
+        {"s": -1, "t":  3, "type": "wall"},
+        {"s":  0, "t":  3, "type": "wall"},
+
+        {"s": -3, "t":  2, "type": "wall"},
+        {"s": -2, "t":  2, "type": "floor"},
+        {"s": -1, "t":  2, "type": "floor"},
+        {"s":  0, "t":  2, "type": "floor"},
+        {"s":  1, "t":  2, "type": "wall"},
+
+        {"s": -3, "t":  1, "type": "wall"},
+        {"s": -2, "t":  1, "type": "floor"},
+        {"s": -1, "t":  1, "type": "floor"},
+        {"s":  0, "t":  1, "type": "floor"},
+        {"s":  1, "t":  1, "type": "floor"},
+        {"s":  2, "t":  1, "type": "wall"},
+
+        {"s": -3, "t":  0, "type": "wall"},
+        {"s": -2, "t":  0, "type": "floor"},
+        {"s": -1, "t":  0, "type": "floor"},
+        {"s":  0, "t":  0, "type": "floor"},
+        {"s":  1, "t":  0, "type": "floor"},
+        {"s":  2, "t":  0, "type": "floor"},
+        {"s":  3, "t":  0, "type": "wall"},
+
+        {"s": -2, "t": -1, "type": "wall"},
+        {"s": -1, "t": -1, "type": "floor"},
+        {"s":  0, "t": -1, "type": "floor"},
+        {"s":  1, "t": -1, "type": "floor"},
+        {"s":  2, "t": -1, "type": "floor"},
+        {"s":  3, "t": -1, "type": "wall"},
+
+        {"s": -1, "t": -2, "type": "wall"},
+        {"s":  0, "t": -2, "type": "floor"},
+        {"s":  1, "t": -2, "type": "floor"},
+        {"s":  2, "t": -2, "type": "floor"},
+        {"s":  3, "t": -2, "type": "wall"},
+
+        {"s":  0, "t": -3, "type": "wall"},
+        {"s":  1, "t": -3, "type": "wall"},
+        {"s":  2, "t": -3, "type": "wall"},
+        {"s":  3, "t": -3, "type": "wall"}
+    ]
+}

@@ -1,7 +1,9 @@
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
+#include <fstream>
 #include <vector>
 
 #include <SDL.h>
@@ -12,9 +14,15 @@
 #include <emscripten.h>
 #endif
 
+// https://github.com/nlohmann/json
+#include "nlohmann/json.hpp"
+
 #define FR(i,a,b) for(int i=(a);i<(b);++i)
 #define FOR(i,n) FR(i,0,n)
 #define BEND(v) (v).begin(),(v).end()
+
+using std::make_pair;
+using nlohmann::json;
 
 // SDL utilities
 struct delete_sdl
@@ -97,10 +105,12 @@ SDL_Renderer * ren = NULL;
 sdl_ptr<SDL_Texture> tile_floor;
 int tile_floor_w;
 int tile_floor_h;
+sdl_ptr<SDL_Texture> tile_wall;
 
 void cleanup()
 {
     tile_floor.reset();
+    tile_wall.reset();
 
     if (ren) SDL_DestroyRenderer(ren);
     if (font) TTF_CloseFont(font);
@@ -152,6 +162,8 @@ void move_player(int ds, int dt)
     player_s += ds;
     player_t += dt;
 }
+
+std::map<std::pair<int,int>, SDL_Texture*> tiles;
 
 double deltaFrame_s;
 
@@ -214,20 +226,17 @@ void render()
     CHECK_SDL(SDL_SetRenderDrawColor(ren, 0, 0, 0, 255));
     CHECK_SDL(SDL_RenderClear(ren));
 
-    //// draw floor
-    FOR(row, 5) {
-        int s_lo = std::max(-row, -2);
-        int s_hi = std::min(2, 4-row) + 1;
+    //// draw tiles
+    for (auto& it : tiles) {
+        int s = it.first.first;
+        int t = it.first.second;
+        SDL_Texture * tex = it.second;
 
-        int t = row-2;
+        int x_px, y_px;
+        hex_to_pixel(s, t, &x_px, &y_px);
 
-        FR(s, s_lo, s_hi) {
-            int x_px, y_px;
-            hex_to_pixel(s, t, &x_px, &y_px);
-
-            SDL_Rect dstrect = { x_px - tile_floor_w/2, y_px - tile_floor_h/2, tile_floor_w, tile_floor_h };
-            SDL_RenderCopy(ren, tile_floor.get(), NULL, &dstrect);
-        }
+        SDL_Rect dstrect = { x_px - tile_floor_w/2, y_px - tile_floor_h/2, tile_floor_w, tile_floor_h };
+        SDL_RenderCopy(ren, tex, NULL, &dstrect);
     }
 
     //// draw player
@@ -264,6 +273,36 @@ void main_loop()
     prevFrame_ms = thisFrame_ms;
 }
 
+void load_map()
+{
+    // load map
+    json j;
+    std::ifstream i("data/map.json");
+    i >> j;
+    i.close();
+
+    player_s = j["player_s"].get<int>();
+    player_t = j["player_t"].get<int>();
+
+    tiles.clear();
+    for (auto& rec : j["tiles"]) {
+        int s = rec["s"].get<int>();
+        int t = rec["t"].get<int>();
+        std::string type = rec["type"].get<std::string>();
+
+        SDL_Texture * tex = NULL;
+        if (type == "wall") {
+            tex = tile_wall.get();
+        } else if (type == "floor") {
+            tex = tile_floor.get();
+        } else {
+            assert(!"Unrecognized tile type");
+        }
+
+        tiles[make_pair(s,t)] = tex;
+    }
+}
+
 int main()
 {
     atexit(cleanup);
@@ -288,10 +327,12 @@ int main()
     // load textures
     tile_floor.reset(LoadTexture(ren, "data/tile_floor.png"));
     CHECK_SDL(SDL_QueryTexture(tile_floor.get(), NULL, NULL, &tile_floor_w, &tile_floor_h));
+    tile_wall.reset(LoadTexture(ren, "data/tile_wall.png"));
 
     // init game
     player_s = 0;
     player_t = 0;
+    load_map();
 
     // IO loop
     prevFrame_ms = SDL_GetTicks();
