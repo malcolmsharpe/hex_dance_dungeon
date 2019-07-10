@@ -341,6 +341,70 @@ void move_player(int dir)
     }
 }
 
+void load_map()
+{
+    // load map
+    json j;
+    std::ifstream i("data/map.json");
+    i >> j;
+    i.close();
+
+    player_s = j["player_s"].get<int>();
+    player_t = j["player_t"].get<int>();
+
+    tiles.clear();
+    for (auto& rec : j["tiles"]) {
+        int s = rec["s"].get<int>();
+        int t = rec["t"].get<int>();
+        std::string type = rec["type"].get<std::string>();
+
+        TileType tile_type = TileType::none;
+        if (type == "wall") {
+            tile_type = TileType::wall;
+        } else if (type == "floor") {
+            tile_type = TileType::floor;
+        } else {
+            assert(!"Unrecognized tile type");
+        }
+
+        tiles[make_pair(s,t)] = tile_type;
+    }
+
+    auto e_json = j.find("entities");
+    assert(e_json != j.end());
+    entities.clear();
+    for (auto& rec : *e_json) {
+        int s = rec["s"].get<int>();
+        int t = rec["t"].get<int>();
+        std::string type = rec["type"].get<std::string>();
+
+        EntityType entity_type = EntityType::none;
+
+        if (type == "enemy_blue_bat") {
+            entity_type = EntityType::blue_bat;
+        } else {
+            assert(!"Unrecognized entity type");
+        }
+
+        entities.push_back(Entity(s, t, entity_type));
+    }
+}
+
+void snap_camera_to_player()
+{
+    int player_x_px, player_y_px;
+    hex_to_pixel(player_s, player_t, &player_x_px, &player_y_px);
+
+    camera_x_px = player_x_px - ORIGIN_X_PX;
+    camera_y_px = player_y_px - ORIGIN_Y_PX;
+}
+
+void reset_game()
+{
+    load_map();
+    snap_camera_to_player();
+}
+
 double deltaFrame_s;
 
 bool quitRequested;
@@ -355,6 +419,9 @@ void update()
         if (e.type == SDL_KEYDOWN) {
             if (e.key.keysym.sym == SDLK_ESCAPE) {
                 quitRequested = true;
+            }
+            if (e.key.keysym.sym == SDLK_BACKSPACE) {
+                reset_game();
             }
 
             // Movement:
@@ -459,64 +526,6 @@ void main_loop()
     render();
 
     prevFrame_ms = thisFrame_ms;
-}
-
-void load_map()
-{
-    // load map
-    json j;
-    std::ifstream i("data/map.json");
-    i >> j;
-    i.close();
-
-    player_s = j["player_s"].get<int>();
-    player_t = j["player_t"].get<int>();
-
-    tiles.clear();
-    for (auto& rec : j["tiles"]) {
-        int s = rec["s"].get<int>();
-        int t = rec["t"].get<int>();
-        std::string type = rec["type"].get<std::string>();
-
-        TileType tile_type = TileType::none;
-        if (type == "wall") {
-            tile_type = TileType::wall;
-        } else if (type == "floor") {
-            tile_type = TileType::floor;
-        } else {
-            assert(!"Unrecognized tile type");
-        }
-
-        tiles[make_pair(s,t)] = tile_type;
-    }
-
-    auto e_json = j.find("entities");
-    assert(e_json != j.end());
-    entities.clear();
-    for (auto& rec : *e_json) {
-        int s = rec["s"].get<int>();
-        int t = rec["t"].get<int>();
-        std::string type = rec["type"].get<std::string>();
-
-        EntityType entity_type = EntityType::none;
-
-        if (type == "enemy_blue_bat") {
-            entity_type = EntityType::blue_bat;
-        } else {
-            assert(!"Unrecognized entity type");
-        }
-
-        entities.push_back(Entity(s, t, entity_type));
-    }
-}
-
-void reset_game()
-{
-    player_s = 0;
-    player_t = 0;
-    camera_x_px = 0;
-    camera_y_px = 0;
-    load_map();
 }
 
 int main()
