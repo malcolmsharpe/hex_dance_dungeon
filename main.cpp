@@ -22,6 +22,7 @@
 #define BEND(v) (v).begin(),(v).end()
 
 using std::make_pair;
+using std::unique_ptr;
 using nlohmann::json;
 
 // SDL utilities
@@ -39,7 +40,7 @@ struct delete_sdl
 };
 
 template<class T>
-using sdl_ptr = std::unique_ptr<T, delete_sdl>;
+using sdl_ptr = unique_ptr<T, delete_sdl>;
 
 void failSDL(const char * msg)
 {
@@ -107,10 +108,27 @@ int tile_floor_w;
 int tile_floor_h;
 sdl_ptr<SDL_Texture> tile_wall;
 
+struct Sprite
+{
+    sdl_ptr<SDL_Texture> tex;
+    int w, h;
+};
+
+std::map<std::string, unique_ptr<Sprite>> sprites;
+
+void LoadSprite(const char * path)
+{
+    unique_ptr<Sprite> s(new Sprite);
+    s->tex.reset(LoadTexture(ren, path));
+    CHECK_SDL(SDL_QueryTexture(s->tex.get(), NULL, NULL, &s->w, &s->h));
+    sprites[path] = std::move(s);
+}
+
 void cleanup()
 {
     tile_floor.reset();
     tile_wall.reset();
+    sprites.clear();
 
     if (ren) SDL_DestroyRenderer(ren);
     if (font) TTF_CloseFont(font);
@@ -157,13 +175,55 @@ const int FONT_HEIGHT = 16;
 // - down-left: +P
 int player_s, player_t;
 
+enum class TileType
+{
+    none,
+    floor,
+    wall
+};
+
+std::map<std::pair<int,int>, TileType> tiles;
+
+enum class ThingType
+{
+    none,
+    blue_bat
+};
+
+struct Thing
+{
+    int s,t;
+    ThingType type;
+
+    Sprite * sprite;
+
+    Thing(int s_, int t_, ThingType type_)
+        : s(s_), t(t_), type(type_), sprite(NULL)
+    {
+        if (type == ThingType::blue_bat) {
+            sprite = sprites.at("data/blue_bat.png").get();
+        } else {
+            assert(!"No sprite for thing type");
+        }
+    }
+
+    void move()
+    {
+    }
+};
+
+std::vector<Thing> things;
+
 void move_player(int ds, int dt)
 {
     player_s += ds;
     player_t += dt;
-}
 
-std::map<std::pair<int,int>, SDL_Texture*> tiles;
+    //// enemy movement
+    for (auto& t : things) {
+        t.move();
+    }
+}
 
 double deltaFrame_s;
 
@@ -232,6 +292,8 @@ void hex_to_screen(int s, int t, int * x_scr, int * y_scr)
     *y_scr = y_px - camera_y_px;
 }
 
+double const CAMERA_TWEEN_SPEED = 10.0;
+
 void render()
 {
     //// update camera
@@ -239,8 +301,12 @@ void render()
         int player_x_px, player_y_px;
         hex_to_pixel(player_s, player_t, &player_x_px, &player_y_px);
 
-        camera_x_px = player_x_px - ORIGIN_X_PX;
-        camera_y_px = player_y_px - ORIGIN_Y_PX;
+        int target_x_px = player_x_px - ORIGIN_X_PX;
+        int target_y_px = player_y_px - ORIGIN_Y_PX;
+
+        double alpha = exp(-deltaFrame_s * CAMERA_TWEEN_SPEED);
+        camera_x_px = static_cast<int>(round(alpha * camera_x_px + (1-alpha) * target_x_px));
+        camera_y_px = static_cast<int>(round(alpha * camera_y_px + (1-alpha) * target_y_px));
     }
 
     //// clear screen
@@ -251,13 +317,29 @@ void render()
     for (auto& it : tiles) {
         int s = it.first.first;
         int t = it.first.second;
-        SDL_Texture * tex = it.second;
+        TileType type = it.second;
+
+        SDL_Texture * tex = NULL;
+        switch (type) {
+        case TileType::floor: tex = tile_floor.get(); break;
+        case TileType::wall: tex = tile_wall.get(); break;
+        case TileType::none: assert(!"Render encountered TileType::none"); break;
+        }
 
         int x_px, y_px;
         hex_to_screen(s, t, &x_px, &y_px);
 
         SDL_Rect dstrect = { x_px - tile_floor_w/2, y_px - tile_floor_h/2, tile_floor_w, tile_floor_h };
         SDL_RenderCopy(ren, tex, NULL, &dstrect);
+    }
+
+    //// draw things
+    for (auto& th : things) {
+        int x_px, y_px;
+        hex_to_screen(th.s, th.t, &x_px, &y_px);
+
+        SDL_Rect dstrect = { x_px - th.sprite->w/2, y_px - th.sprite->h/2, th.sprite->w, th.sprite->h };
+        SDL_RenderCopy(ren, th.sprite->tex.get(), NULL, &dstrect);
     }
 
     //// draw player
@@ -311,16 +393,33 @@ void load_map()
         int t = rec["t"].get<int>();
         std::string type = rec["type"].get<std::string>();
 
-        SDL_Texture * tex = NULL;
+        TileType tile_type = TileType::none;
         if (type == "wall") {
-            tex = tile_wall.get();
+            tile_type = TileType::wall;
         } else if (type == "floor") {
-            tex = tile_floor.get();
+            tile_type = TileType::floor;
         } else {
             assert(!"Unrecognized tile type");
         }
 
-        tiles[make_pair(s,t)] = tex;
+        tiles[make_pair(s,t)] = tile_type;
+    }
+
+    things.clear();
+    for (auto& rec : j["things"]) {
+        int s = rec["s"].get<int>();
+        int t = rec["t"].get<int>();
+        std::string type = rec["type"].get<std::string>();
+
+        ThingType thing_type = ThingType::none;
+
+        if (type == "enemy_blue_bat") {
+            thing_type = ThingType::blue_bat;
+        } else {
+            assert(!"Unrecognized thing type");
+        }
+
+        things.push_back(Thing(s, t, thing_type));
     }
 }
 
@@ -349,6 +448,7 @@ int main()
     tile_floor.reset(LoadTexture(ren, "data/tile_floor.png"));
     CHECK_SDL(SDL_QueryTexture(tile_floor.get(), NULL, NULL, &tile_floor_w, &tile_floor_h));
     tile_wall.reset(LoadTexture(ren, "data/tile_wall.png"));
+    LoadSprite("data/blue_bat.png");
 
     // init game
     player_s = 0;

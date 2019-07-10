@@ -4,26 +4,27 @@ map_str = '''
             # # # #
            # . . . #
           # . . . . #
-   # # # # . . . . . # # # #
+   # # # # . . b . . # # # #
   # . . . + . . . . + . . . #
- # . . . . # . . . # . . . . #
+ # . . . . # . . . # . b . . #
 # . . @ . . # # # # . . . . . #
- # . . . . # . . . # . . . . #
+ # . . . . # . . . # . . b . #
   # . . . # . . . . # . . . #
-   # + # # . . . . . # # + #
+   # + # # . . b . . # # + #
   # . . . + . . . . # . . . #
- # . . . . # . . . # . . . . #
-# . . . . . # # # # . . . . . #
- # . . . . # . . . # . . . . #
-  # . . . + . . . . + . . . #
+ # . . . . # . . . # . . b . #
+# . . b . . # # # # . b . . . #
+ # . . . . # . . . # . . b . #
+  # . . . + . b . . + . . . #
    # # # # . . . . . # # # #
-          # . . . . #
+          # . . b . #
            # . . . #
             # # # #
 '''
 
 map_json = {}
 tiles = []
+things = []
 
 for row, line in enumerate(map_str.split('\n')):
     for col, ch in enumerate(line):
@@ -41,11 +42,15 @@ for row, line in enumerate(map_str.split('\n')):
             tile_type = 'floor'
             map_json['player_s'] = s
             map_json['player_t'] = t
+        elif ch == 'b':
+            tile_type = 'floor'
+            things.append({'s': s, 't': t, 'type': 'enemy_blue_bat'})
 
         if tile_type:
             tiles.append({'s': s, 't': t, 'type': tile_type})
 
 map_json['tiles'] = tiles
+map_json['things'] = things
 
 assert 'player_s' in map_json
 
