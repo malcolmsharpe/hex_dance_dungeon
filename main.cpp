@@ -210,19 +210,40 @@ void update()
 int const HORIZONTAL_HALF_PERIOD_PX = 37;
 int const VERTICAL_HALF_PERIOD_PX = 60;
 
+int const ORIGIN_X_PX = WIN_WIDTH/2;
+int const ORIGIN_Y_PX = WIN_HEIGHT/2;
+
 void hex_to_pixel(int s, int t, int * x_px, int * y_px)
 {
     int p = -s-t;
 
-    int origin_x_px = WIN_WIDTH/2;
-    int origin_y_px = WIN_HEIGHT/2;
+    *x_px = ORIGIN_X_PX + HORIZONTAL_HALF_PERIOD_PX * (s - p);
+    *y_px = ORIGIN_Y_PX - VERTICAL_HALF_PERIOD_PX * t;
+}
 
-    *x_px = origin_x_px + HORIZONTAL_HALF_PERIOD_PX * (s - p);
-    *y_px = origin_y_px - VERTICAL_HALF_PERIOD_PX * t;
+int camera_x_px;
+int camera_y_px;
+
+void hex_to_screen(int s, int t, int * x_scr, int * y_scr)
+{
+    int x_px, y_px;
+    hex_to_pixel(s, t, &x_px, &y_px);
+    *x_scr = x_px - camera_x_px;
+    *y_scr = y_px - camera_y_px;
 }
 
 void render()
 {
+    //// update camera
+    {
+        int player_x_px, player_y_px;
+        hex_to_pixel(player_s, player_t, &player_x_px, &player_y_px);
+
+        camera_x_px = player_x_px - ORIGIN_X_PX;
+        camera_y_px = player_y_px - ORIGIN_Y_PX;
+    }
+
+    //// clear screen
     CHECK_SDL(SDL_SetRenderDrawColor(ren, 0, 0, 0, 255));
     CHECK_SDL(SDL_RenderClear(ren));
 
@@ -233,7 +254,7 @@ void render()
         SDL_Texture * tex = it.second;
 
         int x_px, y_px;
-        hex_to_pixel(s, t, &x_px, &y_px);
+        hex_to_screen(s, t, &x_px, &y_px);
 
         SDL_Rect dstrect = { x_px - tile_floor_w/2, y_px - tile_floor_h/2, tile_floor_w, tile_floor_h };
         SDL_RenderCopy(ren, tex, NULL, &dstrect);
@@ -241,7 +262,7 @@ void render()
 
     //// draw player
     int player_x_px, player_y_px;
-    hex_to_pixel(player_s, player_t, &player_x_px, &player_y_px);
+    hex_to_screen(player_s, player_t, &player_x_px, &player_y_px);
     int player_w_px=64, player_h_px=64;
     CHECK_SDL(SDL_SetRenderDrawColor(ren, 255, 255, 255, 255));
     SDL_Rect rect = { player_x_px - player_w_px/2, player_y_px - player_h_px/2, player_w_px, player_h_px };
@@ -332,6 +353,8 @@ int main()
     // init game
     player_s = 0;
     player_t = 0;
+    camera_x_px = 0;
+    camera_y_px = 0;
     load_map();
 
     // IO loop
