@@ -3,7 +3,9 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
+#include <ctime>
 #include <fstream>
+#include <map>
 #include <vector>
 
 #include <SDL.h>
@@ -179,6 +181,10 @@ int const ORIGIN_Y_PX = WIN_HEIGHT/2;
 // - down-right: +S
 // - up: +T
 // - down-left: +P
+int const NDIRS = 6;
+int const DIR_DS[NDIRS] = {  1,  0, -1, -1,  0,  1 };
+int const DIR_DT[NDIRS] = {  0,  1,  1,  0, -1, -1 };
+
 void hex_to_pixel(int s, int t, int * x_px, int * y_px)
 {
     int p = -s-t;
@@ -211,6 +217,11 @@ enum class TileType
 
 std::map<std::pair<int,int>, TileType> tiles;
 
+bool is_tile_blocking(int s, int t)
+{
+    return tiles[make_pair(s, t)] != TileType::floor;
+}
+
 enum class EntityType
 {
     none,
@@ -236,10 +247,7 @@ struct Entity
         }
     }
 
-    void move()
-    {
-        if (is_dead) return;
-    }
+    void move();
 
     void be_hit()
     {
@@ -260,12 +268,57 @@ struct Entity
 
 std::vector<Entity> entities;
 
-void move_player(int ds, int dt)
+void player_be_hit()
 {
-    int target_s = player_s + ds;
-    int target_t = player_t + dt;
+    fprintf(stderr, "player was hit\n");
+}
 
-    if (tiles[make_pair(target_s, target_t)] != TileType::floor) return;
+void Entity::move()
+{
+    if (is_dead) return;
+
+    int num_open_dirs = 0;
+    int open_dirs[NDIRS];
+
+    FOR(d,NDIRS) {
+        int target_s = s + DIR_DS[d];
+        int target_t = t + DIR_DT[d];
+
+        if (!is_tile_blocking(target_s, target_t)) {
+            open_dirs[num_open_dirs++] = d;
+        }
+    }
+
+    if (num_open_dirs == 0) return;
+
+    int i = rand() % num_open_dirs;
+    int d = open_dirs[i];
+    int target_s = s + DIR_DS[d];
+    int target_t = t + DIR_DT[d];
+
+    bool cancel_move = false;
+    for (auto& e : entities) {
+        if (!e.is_dead && e.s == target_s && e.t == target_t) {
+            cancel_move = true;
+        }
+    }
+
+    if (player_s == target_s && player_t == target_t) {
+        player_be_hit();
+    }
+
+    if (!cancel_move) {
+        s = target_s;
+        t = target_t;
+    }
+}
+
+void move_player(int dir)
+{
+    int target_s = player_s + DIR_DS[dir];
+    int target_t = player_t + DIR_DT[dir];
+
+    if (is_tile_blocking(target_s, target_t)) return;
 
     bool did_attack = false;
     for (auto& e : entities) {
@@ -307,23 +360,23 @@ void update()
             //  i o
             // j   l
             //  m ,
-            if (e.key.keysym.sym == SDLK_i) {
-                move_player(-1, 1);
+            if (e.key.keysym.sym == SDLK_l) {
+                move_player(0);
             }
             if (e.key.keysym.sym == SDLK_o) {
-                move_player(0, 1);
+                move_player(1);
+            }
+            if (e.key.keysym.sym == SDLK_i) {
+                move_player(2);
             }
             if (e.key.keysym.sym == SDLK_j) {
-                move_player(-1, 0);
-            }
-            if (e.key.keysym.sym == SDLK_l) {
-                move_player(1, 0);
+                move_player(3);
             }
             if (e.key.keysym.sym == SDLK_m) {
-                move_player(0, -1);
+                move_player(4);
             }
             if (e.key.keysym.sym == SDLK_COMMA) {
-                move_player(1, -1);
+                move_player(5);
             }
         }
     }
@@ -456,8 +509,18 @@ void load_map()
     }
 }
 
+void reset_game()
+{
+    player_s = 0;
+    player_t = 0;
+    camera_x_px = 0;
+    camera_y_px = 0;
+    load_map();
+}
+
 int main()
 {
+    srand(time(NULL));
     atexit(cleanup);
 
     if (SDL_Init(SDL_INIT_VIDEO) < 0) failSDL("SDL_Init");
@@ -484,11 +547,7 @@ int main()
     LoadSprite("data/blue_bat.png");
 
     // init game
-    player_s = 0;
-    player_t = 0;
-    camera_x_px = 0;
-    camera_y_px = 0;
-    load_map();
+    reset_game();
 
     // IO loop
     prevFrame_ms = SDL_GetTicks();
