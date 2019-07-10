@@ -304,6 +304,7 @@ void Entity::move()
     }
 
     if (player_s == target_s && player_t == target_t) {
+        cancel_move = true;
         player_be_hit();
     }
 
