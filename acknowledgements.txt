@@ -3,4 +3,4 @@ https://opengameart.org/content/dungeon-crawl-32x32-tiles
 https://opengameart.org/content/dungeon-crawl-32x32-tiles-supplemental
 
 Font is Bitstream Vera.
-See data/bitstream_vera_license.txt.
+See data/bitstream_vera_license.txt

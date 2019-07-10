@@ -169,10 +169,37 @@ const int WIN_HEIGHT = 1200;
 
 const int FONT_HEIGHT = 16;
 
+int const HORIZONTAL_HALF_PERIOD_PX = 37;
+int const VERTICAL_HALF_PERIOD_PX = 60;
+
+int const ORIGIN_X_PX = WIN_WIDTH/2;
+int const ORIGIN_Y_PX = WIN_HEIGHT/2;
+
 // Hex cube coordinates:
 // - down-right: +S
 // - up: +T
 // - down-left: +P
+void hex_to_pixel(int s, int t, int * x_px, int * y_px)
+{
+    int p = -s-t;
+
+    *x_px = ORIGIN_X_PX + HORIZONTAL_HALF_PERIOD_PX * (s - p);
+    *y_px = ORIGIN_Y_PX - VERTICAL_HALF_PERIOD_PX * t;
+}
+
+int camera_x_px;
+int camera_y_px;
+
+void hex_to_screen(int s, int t, int * x_scr, int * y_scr)
+{
+    int x_px, y_px;
+    hex_to_pixel(s, t, &x_px, &y_px);
+    *x_scr = x_px - camera_x_px;
+    *y_scr = y_px - camera_y_px;
+}
+
+double const CAMERA_TWEEN_SPEED = 10.0;
+
 int player_s, player_t;
 
 enum class TileType
@@ -184,43 +211,78 @@ enum class TileType
 
 std::map<std::pair<int,int>, TileType> tiles;
 
-enum class ThingType
+enum class EntityType
 {
     none,
     blue_bat
 };
 
-struct Thing
+struct Entity
 {
     int s,t;
-    ThingType type;
+    EntityType type;
 
     Sprite * sprite;
 
-    Thing(int s_, int t_, ThingType type_)
-        : s(s_), t(t_), type(type_), sprite(NULL)
+    bool is_dead;
+
+    Entity(int s_, int t_, EntityType type_)
+        : s(s_), t(t_), type(type_), sprite(NULL), is_dead(false)
     {
-        if (type == ThingType::blue_bat) {
+        if (type == EntityType::blue_bat) {
             sprite = sprites.at("data/blue_bat.png").get();
         } else {
-            assert(!"No sprite for thing type");
+            assert(!"No sprite for entity type");
         }
     }
 
     void move()
     {
+        if (is_dead) return;
+    }
+
+    void be_hit()
+    {
+        is_dead = true;
+    }
+
+    void render()
+    {
+        if (is_dead) return;
+
+        int x_px, y_px;
+        hex_to_screen(s, t, &x_px, &y_px);
+
+        SDL_Rect dstrect = { x_px - sprite->w/2, y_px - sprite->h/2, sprite->w, sprite->h };
+        SDL_RenderCopy(ren, sprite->tex.get(), NULL, &dstrect);
     }
 };
 
-std::vector<Thing> things;
+std::vector<Entity> entities;
 
 void move_player(int ds, int dt)
 {
-    player_s += ds;
-    player_t += dt;
+    int target_s = player_s + ds;
+    int target_t = player_t + dt;
+
+    if (tiles[make_pair(target_s, target_t)] != TileType::floor) return;
+
+    bool did_attack = false;
+    for (auto& e : entities) {
+        //fprintf(stderr, "%d %d : %d %d\n", target_s, target_t, e.s, e.t);
+        if (e.s == target_s && e.t == target_t && !e.is_dead) {
+            did_attack = true;
+            e.be_hit();
+        }
+    }
+
+    if (!did_attack) {
+        player_s = target_s;
+        player_t = target_t;
+    }
 
     //// enemy movement
-    for (auto& t : things) {
+    for (auto& t : entities) {
         t.move();
     }
 }
@@ -267,33 +329,6 @@ void update()
     }
 }
 
-int const HORIZONTAL_HALF_PERIOD_PX = 37;
-int const VERTICAL_HALF_PERIOD_PX = 60;
-
-int const ORIGIN_X_PX = WIN_WIDTH/2;
-int const ORIGIN_Y_PX = WIN_HEIGHT/2;
-
-void hex_to_pixel(int s, int t, int * x_px, int * y_px)
-{
-    int p = -s-t;
-
-    *x_px = ORIGIN_X_PX + HORIZONTAL_HALF_PERIOD_PX * (s - p);
-    *y_px = ORIGIN_Y_PX - VERTICAL_HALF_PERIOD_PX * t;
-}
-
-int camera_x_px;
-int camera_y_px;
-
-void hex_to_screen(int s, int t, int * x_scr, int * y_scr)
-{
-    int x_px, y_px;
-    hex_to_pixel(s, t, &x_px, &y_px);
-    *x_scr = x_px - camera_x_px;
-    *y_scr = y_px - camera_y_px;
-}
-
-double const CAMERA_TWEEN_SPEED = 10.0;
-
 void render()
 {
     //// update camera
@@ -333,13 +368,9 @@ void render()
         SDL_RenderCopy(ren, tex, NULL, &dstrect);
     }
 
-    //// draw things
-    for (auto& th : things) {
-        int x_px, y_px;
-        hex_to_screen(th.s, th.t, &x_px, &y_px);
-
-        SDL_Rect dstrect = { x_px - th.sprite->w/2, y_px - th.sprite->h/2, th.sprite->w, th.sprite->h };
-        SDL_RenderCopy(ren, th.sprite->tex.get(), NULL, &dstrect);
+    //// draw entities
+    for (auto& e : entities) {
+        e.render();
     }
 
     //// draw player
@@ -405,21 +436,23 @@ void load_map()
         tiles[make_pair(s,t)] = tile_type;
     }
 
-    things.clear();
-    for (auto& rec : j["things"]) {
+    auto e_json = j.find("entities");
+    assert(e_json != j.end());
+    entities.clear();
+    for (auto& rec : *e_json) {
         int s = rec["s"].get<int>();
         int t = rec["t"].get<int>();
         std::string type = rec["type"].get<std::string>();
 
-        ThingType thing_type = ThingType::none;
+        EntityType entity_type = EntityType::none;
 
         if (type == "enemy_blue_bat") {
-            thing_type = ThingType::blue_bat;
+            entity_type = EntityType::blue_bat;
         } else {
-            assert(!"Unrecognized thing type");
+            assert(!"Unrecognized entity type");
         }
 
-        things.push_back(Thing(s, t, thing_type));
+        entities.push_back(Entity(s, t, entity_type));
     }
 }
 
