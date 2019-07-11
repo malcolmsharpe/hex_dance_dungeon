@@ -222,6 +222,8 @@ bool is_tile_blocking(int s, int t)
     return tiles[make_pair(s, t)] != TileType::floor;
 }
 
+Sprite * telegraph_arrows[6];
+
 enum class EntityType
 {
     none,
@@ -236,9 +238,10 @@ struct Entity
     Sprite * sprite;
 
     bool is_dead;
+    int prep_dir;
 
     Entity(int s_, int t_, EntityType type_)
-        : s(s_), t(t_), type(type_), sprite(NULL), is_dead(false)
+        : s(s_), t(t_), type(type_), sprite(NULL), is_dead(false), prep_dir(-1)
     {
         if (type == EntityType::blue_bat) {
             sprite = sprites.at("data/blue_bat.png").get();
@@ -248,6 +251,7 @@ struct Entity
     }
 
     void move();
+    void think();
 
     void be_hit()
     {
@@ -263,6 +267,26 @@ struct Entity
 
         SDL_Rect dstrect = { x_px - sprite->w/2, y_px - sprite->h/2, sprite->w, sprite->h };
         SDL_RenderCopy(ren, sprite->tex.get(), NULL, &dstrect);
+
+        int tile_x_px = x_px - tile_floor_w/2;
+        int tile_y_px = y_px - tile_floor_h/2;
+
+        if (prep_dir != -1) {
+            assert(0 <= prep_dir && prep_dir < NDIRS);
+            int xoff = 0, yoff = 0;
+
+            switch (prep_dir) {
+            case 0: xoff = 70; yoff = 34; break;
+            case 1: xoff = 52; yoff =  3; break;
+            case 2: xoff = 14; yoff =  2; break;
+            case 3: xoff = -6; yoff = 34; break;
+            case 4: xoff = 15; yoff = 65; break;
+            case 5: xoff = 52; yoff = 64; break;
+            }
+
+            dstrect = { tile_x_px + xoff, tile_y_px + yoff, telegraph_arrows[prep_dir]->w, telegraph_arrows[prep_dir]->h };
+            SDL_RenderCopy(ren, telegraph_arrows[prep_dir]->tex.get(), NULL, &dstrect);
+        }
     }
 };
 
@@ -274,6 +298,34 @@ void player_be_hit()
 }
 
 void Entity::move()
+{
+    if (is_dead) return;
+
+    // Consume the prepared direction
+    if (prep_dir == -1) return;
+    int d = prep_dir;
+    prep_dir = -1;
+
+    int target_s = s + DIR_DS[d];
+    int target_t = t + DIR_DT[d];
+
+    if (is_tile_blocking(target_s, target_t)) return;
+
+    for (auto& e : entities) {
+        if (!e.is_dead && e.s == target_s && e.t == target_t) {
+            return;
+        }
+    }
+
+    if (player_s == target_s && player_t == target_t) {
+        player_be_hit();
+    } else {
+        s = target_s;
+        t = target_t;
+    }
+}
+
+void Entity::think()
 {
     if (is_dead) return;
 
@@ -292,26 +344,7 @@ void Entity::move()
     if (num_open_dirs == 0) return;
 
     int i = rand() % num_open_dirs;
-    int d = open_dirs[i];
-    int target_s = s + DIR_DS[d];
-    int target_t = t + DIR_DT[d];
-
-    bool cancel_move = false;
-    for (auto& e : entities) {
-        if (!e.is_dead && e.s == target_s && e.t == target_t) {
-            cancel_move = true;
-        }
-    }
-
-    if (player_s == target_s && player_t == target_t) {
-        cancel_move = true;
-        player_be_hit();
-    }
-
-    if (!cancel_move) {
-        s = target_s;
-        t = target_t;
-    }
+    prep_dir = open_dirs[i];
 }
 
 void move_player(int dir)
@@ -338,6 +371,9 @@ void move_player(int dir)
     //// enemy movement
     for (auto& t : entities) {
         t.move();
+    }
+    for (auto& t : entities) {
+        t.think();
     }
 }
 
@@ -555,6 +591,15 @@ int main()
     CHECK_SDL(SDL_QueryTexture(tile_floor.get(), NULL, NULL, &tile_floor_w, &tile_floor_h));
     tile_wall.reset(LoadTexture(ren, "data/tile_wall.png"));
     LoadSprite("data/blue_bat.png");
+
+    FOR(d,NDIRS) {
+        std::string path = "data/telegraph_arrow_";
+        path.push_back('0' + d);
+        path += ".png";
+
+        LoadSprite(path.c_str());
+        telegraph_arrows[d] = sprites[path].get();
+    }
 
     // init game
     reset_game();
