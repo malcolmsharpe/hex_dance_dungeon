@@ -462,8 +462,8 @@ void update()
 
             // Movement:
             //  i o
-            // j   l
-            //  m ,
+            // u   l
+            //  j k
             if (e.key.keysym.sym == SDLK_l) {
                 move_player(0);
             }
@@ -473,13 +473,13 @@ void update()
             if (e.key.keysym.sym == SDLK_i) {
                 move_player(2);
             }
-            if (e.key.keysym.sym == SDLK_j) {
+            if (e.key.keysym.sym == SDLK_u) {
                 move_player(3);
             }
-            if (e.key.keysym.sym == SDLK_m) {
+            if (e.key.keysym.sym == SDLK_j) {
                 move_player(4);
             }
-            if (e.key.keysym.sym == SDLK_COMMA) {
+            if (e.key.keysym.sym == SDLK_k) {
                 move_player(5);
             }
         }
