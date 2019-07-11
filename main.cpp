@@ -462,9 +462,9 @@ void update()
 
             // Movement:
             //  i o
-            // u   l
-            //  j k
-            if (e.key.keysym.sym == SDLK_l) {
+            // j   ;
+            //  k l
+            if (e.key.keysym.sym == SDLK_SEMICOLON) {
                 move_player(0);
             }
             if (e.key.keysym.sym == SDLK_o) {
@@ -473,13 +473,13 @@ void update()
             if (e.key.keysym.sym == SDLK_i) {
                 move_player(2);
             }
-            if (e.key.keysym.sym == SDLK_u) {
+            if (e.key.keysym.sym == SDLK_j) {
                 move_player(3);
             }
-            if (e.key.keysym.sym == SDLK_j) {
+            if (e.key.keysym.sym == SDLK_k) {
                 move_player(4);
             }
-            if (e.key.keysym.sym == SDLK_k) {
+            if (e.key.keysym.sym == SDLK_l) {
                 move_player(5);
             }
         }
