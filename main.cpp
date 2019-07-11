@@ -554,6 +554,8 @@ void update()
                 warp_to_map("data/map_bat.json");
             } else if (e.key.keysym.sym == SDLK_2) {
                 warp_to_map("data/map_slime.json");
+            } else if (e.key.keysym.sym == SDLK_3) {
+                warp_to_map("data/map_mix.json");
             }
         }
     }
