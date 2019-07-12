@@ -178,6 +178,9 @@ int const VERTICAL_HALF_PERIOD_PX = 60;
 int const ORIGIN_X_PX = WIN_WIDTH/2;
 int const ORIGIN_Y_PX = WIN_HEIGHT/2;
 
+// Many of the hex grid routines are informed by
+// https://www.redblobgames.com/grids/hexagons
+//
 // Hex cube coordinates:
 // - down-right: +S
 // - up: +T
@@ -199,12 +202,17 @@ int dir_deviation(int d1, int d2)
 
 int hex_dist(int s1, int t1, int s2, int t2)
 {
-    // For explanation, see
-    // https://www.redblobgames.com/grids/hexagons/#distances
     int p1 = -s1-t1;
     int p2 = -s2-t2;
 
     return (abs(s1-s2) + abs(t1-t2) + abs(p1-p2))/2;
+}
+
+int hex_dist_l2sq(int s1, int t1, int s2, int t2)
+{
+    // This formula assumes that the center-to-center distance of adjacent hexes is 1.
+    int ds = s2-s1, dt = t2-t1;
+    return ds*ds + dt*dt + ds*dt;
 }
 
 void hex_to_pixel(int s, int t, int * x_px, int * y_px)
@@ -243,7 +251,9 @@ std::map<std::pair<int,int>, TileType> tiles;
 
 bool is_tile_blocking(int s, int t)
 {
-    return tiles[make_pair(s, t)] != TileType::floor;
+    auto i = tiles.find(make_pair(s,t));
+    if (i == tiles.end()) return false;
+    return i->second != TileType::floor;
 }
 
 void player_be_hit()
@@ -274,7 +284,7 @@ struct Entity
     int prep_dir = -1;
 
     // slime_blue, skeleton_white
-    int moveCooldown = 0;
+    int moveCooldown = 1;
 
     // slime_blue
     int parity = 0;
@@ -435,6 +445,15 @@ struct Entity
         }
     }
 
+    std::tuple<int, int, int>
+    priority_key()
+    {
+        return make_tuple(
+            hex_dist_l2sq(s, t, player_s, player_t),
+            t,
+            s);
+    }
+
     static void load_textures()
     {
         LoadSprite("data/bat_blue.png");
@@ -453,12 +472,22 @@ struct Entity
 
     static std::vector<unique_ptr<Entity>> entities;
 
+    static std::vector<Entity*> prioritized;
+
     static void move_enemies()
     {
+        prioritized.clear();
         for (auto& e : entities) {
+            prioritized.push_back(e.get());
+        }
+        sort(BEND(prioritized), [](Entity * e1, Entity * e2) {
+            return e1->priority_key() < e2->priority_key();
+        });
+
+        for (auto& e : prioritized) {
             e->move();
         }
-        for (auto& e : entities) {
+        for (auto& e : prioritized) {
             e->think();
         }
     }
@@ -472,14 +501,20 @@ struct Entity
 };
 
 std::vector<unique_ptr<Entity>> Entity::entities;
+std::vector<Entity*> Entity::prioritized;
 
 void move_player(int dir)
 {
     player_prev_s = player_s;
     player_prev_t = player_t;
 
-    int target_s = player_s + DIR_DS[dir];
-    int target_t = player_t + DIR_DT[dir];
+    int ds = 0, dt = 0;
+    if (dir != -1) {
+        ds = DIR_DS[dir];
+        dt = DIR_DT[dir];
+    }
+    int target_s = player_s + ds;
+    int target_t = player_t + dt;
 
     if (is_tile_blocking(target_s, target_t)) return;
 
@@ -619,6 +654,9 @@ void update()
             if (e.key.keysym.sym == SDLK_l) {
                 move_player(5);
             }
+            if (e.key.keysym.sym == SDLK_PERIOD) {
+                move_player(-1);
+            }
 
             // Maps
             if (e.key.keysym.sym == SDLK_1) {
@@ -627,6 +665,8 @@ void update()
                 warp_to_map("data/map_slime.json");
             } else if (e.key.keysym.sym == SDLK_3) {
                 warp_to_map("data/map_skeleton.json");
+            } else if (e.key.keysym.sym == SDLK_4) {
+                warp_to_map("data/map_skeleton_line.json");
             } else if (e.key.keysym.sym == SDLK_0) {
                 warp_to_map("data/map_mix.json");
             }
@@ -663,7 +703,10 @@ void render()
         switch (type) {
         case TileType::floor: tex = tile_floor.get(); break;
         case TileType::wall: tex = tile_wall.get(); break;
-        case TileType::none: assert(!"Render encountered TileType::none"); break;
+        case TileType::none:
+            fprintf(stderr, "Tile at (%d,%d) has type = TileType::none\n", s, t);
+            assert(!"Render encountered TileType::none");
+            break;
         }
 
         int x_px, y_px;
