@@ -179,6 +179,8 @@ int const VERTICAL_HALF_PERIOD_PX = 60;
 int const ORIGIN_X_PX = WIN_WIDTH/2;
 int const ORIGIN_Y_PX = WIN_HEIGHT/2;
 
+double deltaFrame_s;
+
 // Many of the hex grid routines are informed by
 // https://www.redblobgames.com/grids/hexagons
 //
@@ -216,23 +218,27 @@ int hex_dist_l2sq(int s1, int t1, int s2, int t2)
     return ds*ds + dt*dt + ds*dt;
 }
 
-void hex_to_pixel(int s, int t, int * x_px, int * y_px)
+std::tuple<int, int> hex_to_pixel(int s, int t)
 {
     int p = -s-t;
 
-    *x_px = ORIGIN_X_PX + HORIZONTAL_HALF_PERIOD_PX * (s - p);
-    *y_px = ORIGIN_Y_PX - VERTICAL_HALF_PERIOD_PX * t;
+    return make_tuple(
+            ORIGIN_X_PX + HORIZONTAL_HALF_PERIOD_PX * (s - p),
+            ORIGIN_Y_PX - VERTICAL_HALF_PERIOD_PX * t);
 }
 
 int camera_x_px;
 int camera_y_px;
 
-void hex_to_screen(int s, int t, int * x_scr, int * y_scr)
+std::tuple<int, int> pixel_to_screen(std::tuple<int, int> pos)
 {
-    int x_px, y_px;
-    hex_to_pixel(s, t, &x_px, &y_px);
-    *x_scr = x_px - camera_x_px;
-    *y_scr = y_px - camera_y_px;
+    auto [ x_px, y_px ] = pos;
+    return make_tuple(x_px - camera_x_px, y_px - camera_y_px);
+}
+
+std::tuple<int, int> hex_to_screen(int s, int t)
+{
+    return pixel_to_screen(hex_to_pixel(s, t));
 }
 
 double const CAMERA_TWEEN_SPEED = 10.0;
@@ -272,13 +278,59 @@ enum class EntityType
     skeleton_white
 };
 
+double const TWEEN_LEN_S = 0.08;
+
+struct Tweener
+{
+    int src_x_px=0, src_y_px=0, dst_x_px=0, dst_y_px=0;
+    double t;
+
+    void ease_pos_px(std::tuple<int, int> pos_px)
+    {
+        auto [ x_px, y_px ] = get_pos_px();
+        src_x_px = x_px;
+        src_y_px = y_px;
+
+        std::tie(x_px, y_px) = pos_px;
+        dst_x_px = x_px;
+        dst_y_px = y_px;
+
+        t = 0;
+    }
+
+    void set_pos_px(std::tuple<int, int> pos_px)
+    {
+        auto [ x_px, y_px ] = pos_px;
+        src_x_px = dst_x_px = x_px;
+        src_y_px = dst_y_px = y_px;
+
+        t = 0;
+    }
+
+    std::tuple<int, int> get_pos_px()
+    {
+        int x_px = dst_x_px, y_px = dst_y_px;
+
+        t += deltaFrame_s;
+        if (t < TWEEN_LEN_S) {
+            double pct = (TWEEN_LEN_S - t) / TWEEN_LEN_S;
+
+            double alpha = (1 - cos(pct * M_PI / 2));
+            x_px += static_cast<int>(round((src_x_px - x_px) * alpha));
+            y_px += static_cast<int>(round((src_y_px - y_px) * alpha));
+        }
+
+        return make_tuple(x_px, y_px);
+    }
+};
+
 struct Entity
 {
     int s=0,t=0;
     EntityType type = EntityType::none;
 
     Sprite * sprite = NULL;
-
+    Tweener tweener;
     bool is_dead = false;
 
     // bat_blue, slime_blue
@@ -357,6 +409,7 @@ struct Entity
         } else {
             s = target_s;
             t = target_t;
+            tweener.ease_pos_px(hex_to_pixel(s, t));
         }
     }
 
@@ -402,8 +455,7 @@ struct Entity
         if (is_dead) return;
 
         // main sprite
-        int x_px, y_px;
-        hex_to_screen(s, t, &x_px, &y_px);
+        auto [ x_px, y_px ] = pixel_to_screen(tweener.get_pos_px());
 
         int frame = 0;
 
@@ -447,6 +499,8 @@ struct Entity
         case EntityType::skeleton_white: sprite = sprites.at("data/skeleton_white.png").get(); break;
         default: assert(!"Unrecognized entity type");
         }
+
+        tweener.set_pos_px(hex_to_pixel(s, t));
     }
 
     std::tuple<int, int, int>
@@ -610,8 +664,7 @@ void load_map()
 
 void snap_camera_to_player()
 {
-    int player_x_px, player_y_px;
-    hex_to_pixel(player_s, player_t, &player_x_px, &player_y_px);
+    auto [ player_x_px, player_y_px ] = hex_to_pixel(player_s, player_t);
 
     camera_x_px = player_x_px - ORIGIN_X_PX;
     camera_y_px = player_y_px - ORIGIN_Y_PX;
@@ -630,8 +683,6 @@ void warp_to_map(std::string map_path)
     current_map_path = map_path;
     reset_game();
 }
-
-double deltaFrame_s;
 
 bool quitRequested;
 void update()
@@ -696,8 +747,7 @@ void render()
 {
     //// update camera
     {
-        int player_x_px, player_y_px;
-        hex_to_pixel(player_s, player_t, &player_x_px, &player_y_px);
+        auto [ player_x_px, player_y_px ] = hex_to_pixel(player_s, player_t);
 
         int target_x_px = player_x_px - ORIGIN_X_PX;
         int target_y_px = player_y_px - ORIGIN_Y_PX;
@@ -727,8 +777,7 @@ void render()
             break;
         }
 
-        int x_px, y_px;
-        hex_to_screen(s, t, &x_px, &y_px);
+        auto [ x_px, y_px ] = hex_to_screen(s, t);
 
         SDL_Rect dstrect = { x_px - tile_floor_w/2, y_px - tile_floor_h/2, tile_floor_w, tile_floor_h };
         SDL_RenderCopy(ren, tex, NULL, &dstrect);
@@ -738,8 +787,7 @@ void render()
     Entity::render_enemies();
 
     //// draw player
-    int player_x_px, player_y_px;
-    hex_to_screen(player_s, player_t, &player_x_px, &player_y_px);
+    auto [ player_x_px, player_y_px ] = hex_to_screen(player_s, player_t);
     int player_w_px=64, player_h_px=64;
     CHECK_SDL(SDL_SetRenderDrawColor(ren, 255, 255, 255, 255));
     SDL_Rect rect = { player_x_px - player_w_px/2, player_y_px - player_h_px/2, player_w_px, player_h_px };
