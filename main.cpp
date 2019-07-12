@@ -26,6 +26,7 @@
 using std::make_pair;
 using std::unique_ptr;
 using nlohmann::json;
+using std::make_tuple;
 
 // SDL utilities
 struct delete_sdl
@@ -185,6 +186,27 @@ int const NDIRS = 6;
 int const DIR_DS[NDIRS] = {  1,  0, -1, -1,  0,  1 };
 int const DIR_DT[NDIRS] = {  0,  1,  1,  0, -1, -1 };
 
+int positive_mod(int x, int m)
+{
+    return (x % m + m) % m;
+}
+
+// Means: how many 60-degree increments separate these two directions.
+int dir_deviation(int d1, int d2)
+{
+    return std::min(positive_mod(d2-d1, NDIRS), positive_mod(d1-d2, NDIRS));
+}
+
+int hex_dist(int s1, int t1, int s2, int t2)
+{
+    // For explanation, see
+    // https://www.redblobgames.com/grids/hexagons/#distances
+    int p1 = -s1-t1;
+    int p2 = -s2-t2;
+
+    return (abs(s1-s2) + abs(t1-t2) + abs(p1-p2))/2;
+}
+
 void hex_to_pixel(int s, int t, int * x_px, int * y_px)
 {
     int p = -s-t;
@@ -207,6 +229,8 @@ void hex_to_screen(int s, int t, int * x_scr, int * y_scr)
 double const CAMERA_TWEEN_SPEED = 10.0;
 
 int player_s, player_t;
+// Where was the player at the start of the current turn?
+int player_prev_s, player_prev_t;
 
 enum class TileType
 {
@@ -233,7 +257,8 @@ enum class EntityType
 {
     none,
     bat_blue,
-    slime_blue
+    slime_blue,
+    skeleton_white
 };
 
 struct Entity
@@ -244,27 +269,75 @@ struct Entity
     Sprite * sprite = NULL;
 
     bool is_dead = false;
+
+    // bat_blue, slime_blue
     int prep_dir = -1;
 
-    // slime_blue
+    // slime_blue, skeleton_white
     int moveCooldown = 0;
+
+    // slime_blue
     int parity = 0;
+
+    // skeleton_white
+    int momentum_dir = 3;
 
     void move()
     {
         if (is_dead) return;
 
-        int d = prep_dir;
-        prep_dir = -1;
-        if (d == -1) return;
+        int move_dir = -1;
+
+        if (type == EntityType::bat_blue || type == EntityType::slime_blue) {
+            move_dir = prep_dir;
+            prep_dir = -1;
+        } else if (type == EntityType::skeleton_white) {
+            if (moveCooldown > 0) {
+                --moveCooldown;
+                return;
+            }
+
+            // If we can't get closer to the player's current or previous position, prefer standing still.
+            auto best_key = make_tuple(
+                    hex_dist(s, t, player_s, player_t),
+                    hex_dist(s, t, player_prev_s, player_prev_t),
+                    0);
+
+            FOR(d,NDIRS) {
+                int new_s = s + DIR_DS[d];
+                int new_t = t + DIR_DT[d];
+
+                if (is_tile_blocking(new_s, new_t)) continue;
+
+                // Always hit player when possible
+                if (player_s == new_s && player_t == new_t) {
+                    move_dir = d;
+                    break;
+                }
+
+                auto cur_key = make_tuple(
+                        hex_dist(new_s, new_t, player_s, player_t),
+                        hex_dist(new_s, new_t, player_prev_s, player_prev_t),
+                        dir_deviation(momentum_dir, d));
+
+                if (cur_key < best_key) {
+                    best_key = cur_key;
+                    move_dir = d;
+                }
+            }
+        }
+
+        if (move_dir == -1) return;
+
+        momentum_dir = move_dir;
 
         // We're committed to trying to move
-        if (type == EntityType::slime_blue) {
+        if (type == EntityType::slime_blue || type == EntityType::skeleton_white) {
             moveCooldown = 1;
         }
 
-        int target_s = s + DIR_DS[d];
-        int target_t = t + DIR_DT[d];
+        int target_s = s + DIR_DS[move_dir];
+        int target_t = t + DIR_DT[move_dir];
 
         if (is_tile_blocking(target_s, target_t)) return;
 
@@ -357,7 +430,24 @@ struct Entity
         switch (type) {
         case EntityType::bat_blue: sprite = sprites.at("data/bat_blue.png").get(); break;
         case EntityType::slime_blue: sprite = sprites.at("data/slime_blue.png").get(); break;
+        case EntityType::skeleton_white: sprite = sprites.at("data/skeleton_white.png").get(); break;
         default: assert(!"Unrecognized entity type");
+        }
+    }
+
+    static void load_textures()
+    {
+        LoadSprite("data/bat_blue.png");
+        LoadSprite("data/slime_blue.png");
+        LoadSprite("data/skeleton_white.png");
+
+        FOR(d,NDIRS) {
+            std::string path = "data/telegraph_arrow_";
+            path.push_back('0' + d);
+            path += ".png";
+
+            LoadSprite(path.c_str());
+            telegraph_arrows[d] = sprites[path].get();
         }
     }
 
@@ -385,6 +475,9 @@ std::vector<unique_ptr<Entity>> Entity::entities;
 
 void move_player(int dir)
 {
+    player_prev_s = player_s;
+    player_prev_t = player_t;
+
     int target_s = player_s + DIR_DS[dir];
     int target_t = player_t + DIR_DT[dir];
 
@@ -450,6 +543,8 @@ void load_map()
             e->type = EntityType::bat_blue;
         } else if (type == "enemy_slime_blue") {
             e->type = EntityType::slime_blue;
+        } else if (type == "enemy_skeleton_white") {
+            e->type = EntityType::skeleton_white;
         } else {
             assert(!"Unrecognized entity type");
         }
@@ -472,6 +567,8 @@ void snap_camera_to_player()
 void reset_game()
 {
     load_map();
+    player_prev_s = player_s;
+    player_prev_t = player_t;
     snap_camera_to_player();
 }
 
@@ -529,6 +626,8 @@ void update()
             } else if (e.key.keysym.sym == SDLK_2) {
                 warp_to_map("data/map_slime.json");
             } else if (e.key.keysym.sym == SDLK_3) {
+                warp_to_map("data/map_skeleton.json");
+            } else if (e.key.keysym.sym == SDLK_0) {
                 warp_to_map("data/map_mix.json");
             }
         }
@@ -637,20 +736,11 @@ int main()
     tile_floor.reset(LoadTexture(ren, "data/tile_floor.png"));
     CHECK_SDL(SDL_QueryTexture(tile_floor.get(), NULL, NULL, &tile_floor_w, &tile_floor_h));
     tile_wall.reset(LoadTexture(ren, "data/tile_wall.png"));
-    LoadSprite("data/bat_blue.png");
-    LoadSprite("data/slime_blue.png");
 
-    FOR(d,NDIRS) {
-        std::string path = "data/telegraph_arrow_";
-        path.push_back('0' + d);
-        path += ".png";
-
-        LoadSprite(path.c_str());
-        telegraph_arrows[d] = sprites[path].get();
-    }
+    Entity::load_textures();
 
     // init game
-    warp_to_map("data/map_slime.json");
+    warp_to_map("data/map_mix.json");
 
     // IO loop
     prevFrame_ms = SDL_GetTicks();
