@@ -222,6 +222,11 @@ bool is_tile_blocking(int s, int t)
     return tiles[make_pair(s, t)] != TileType::floor;
 }
 
+void player_be_hit()
+{
+    fprintf(stderr, "player was hit\n");
+}
+
 Sprite * telegraph_arrows[6];
 
 enum class EntityType
@@ -233,28 +238,81 @@ enum class EntityType
 
 struct Entity
 {
-    int s,t;
-    EntityType type;
+    int s=0,t=0;
+    EntityType type = EntityType::none;
 
-    Sprite * sprite;
+    Sprite * sprite = NULL;
 
-    bool is_dead;
-    int prep_dir;
+    bool is_dead = false;
+    int prep_dir = -1;
 
-    Entity(int s_, int t_, EntityType type_)
-        : s(s_), t(t_), type(type_), sprite(NULL), is_dead(false), prep_dir(-1)
+    // slime_blue
+    int moveCooldown = 0;
+    int parity = 0;
+
+    void move()
     {
-        if (type == EntityType::bat_blue) {
-            sprite = sprites.at("data/bat_blue.png").get();
-        } else if (type == EntityType::slime_blue) {
-            sprite = sprites.at("data/slime_blue.png").get();
+        if (is_dead) return;
+
+        int d = prep_dir;
+        prep_dir = -1;
+        if (d == -1) return;
+
+        // We're committed to trying to move
+        if (type == EntityType::slime_blue) {
+            moveCooldown = 1;
+        }
+
+        int target_s = s + DIR_DS[d];
+        int target_t = t + DIR_DT[d];
+
+        if (is_tile_blocking(target_s, target_t)) return;
+
+        for (auto& e : entities) {
+            if (!e->is_dead && e->s == target_s && e->t == target_t) {
+                return;
+            }
+        }
+
+        if (player_s == target_s && player_t == target_t) {
+            player_be_hit();
         } else {
-            assert(!"No sprite for entity type");
+            s = target_s;
+            t = target_t;
         }
     }
 
-    void move();
-    virtual void think() = 0;
+    void think()
+    {
+        if (is_dead) return;
+
+        if (type == EntityType::bat_blue) {
+            int num_open_dirs = 0;
+            int open_dirs[NDIRS];
+
+            FOR(d,NDIRS) {
+                int target_s = s + DIR_DS[d];
+                int target_t = t + DIR_DT[d];
+
+                if (!is_tile_blocking(target_s, target_t)) {
+                    open_dirs[num_open_dirs++] = d;
+                }
+            }
+
+            if (num_open_dirs == 0) return;
+
+            int i = rand() % num_open_dirs;
+            prep_dir = open_dirs[i];
+        } else if (type == EntityType::slime_blue) {
+            if (moveCooldown > 0) {
+                --moveCooldown;
+                return;
+            }
+
+            prep_dir = 3 * parity;
+            parity = (parity+1)%2;
+        }
+    }
 
     void be_hit()
     {
@@ -265,12 +323,14 @@ struct Entity
     {
         if (is_dead) return;
 
+        // main sprite
         int x_px, y_px;
         hex_to_screen(s, t, &x_px, &y_px);
 
         SDL_Rect dstrect = { x_px - sprite->w/2, y_px - sprite->h/2, sprite->w, sprite->h };
         SDL_RenderCopy(ren, sprite->tex.get(), NULL, &dstrect);
 
+        // telegraph arrow
         int tile_x_px = x_px - tile_floor_w/2;
         int tile_y_px = y_px - tile_floor_h/2;
 
@@ -292,117 +352,36 @@ struct Entity
         }
     }
 
-    static Entity * make(int s, int t, EntityType type);
-
-    virtual int consumePrepDir()
+    void init()
     {
-        int d = prep_dir;
-        prep_dir = -1;
-        return d;
-    }
-};
-
-std::vector<unique_ptr<Entity>> entities;
-
-void player_be_hit()
-{
-    fprintf(stderr, "player was hit\n");
-}
-
-void Entity::move()
-{
-    if (is_dead) return;
-
-    int d = consumePrepDir();
-    if (d == -1) return;
-
-    int target_s = s + DIR_DS[d];
-    int target_t = t + DIR_DT[d];
-
-    if (is_tile_blocking(target_s, target_t)) return;
-
-    for (auto& e : entities) {
-        if (!e->is_dead && e->s == target_s && e->t == target_t) {
-            return;
+        switch (type) {
+        case EntityType::bat_blue: sprite = sprites.at("data/bat_blue.png").get(); break;
+        case EntityType::slime_blue: sprite = sprites.at("data/slime_blue.png").get(); break;
+        default: assert(!"Unrecognized entity type");
         }
     }
 
-    if (player_s == target_s && player_t == target_t) {
-        player_be_hit();
-    } else {
-        s = target_s;
-        t = target_t;
-    }
-}
+    static std::vector<unique_ptr<Entity>> entities;
 
-
-struct Bat : public Entity
-{
-    Bat(int s_, int t_, EntityType type_)
-        : Entity(s_, t_, type_)
-    {}
-
-    virtual void think()
+    static void move_enemies()
     {
-        if (is_dead) return;
-
-        int num_open_dirs = 0;
-        int open_dirs[NDIRS];
-
-        FOR(d,NDIRS) {
-            int target_s = s + DIR_DS[d];
-            int target_t = t + DIR_DT[d];
-
-            if (!is_tile_blocking(target_s, target_t)) {
-                open_dirs[num_open_dirs++] = d;
-            }
+        for (auto& e : entities) {
+            e->move();
         }
+        for (auto& e : entities) {
+            e->think();
+        }
+    }
 
-        if (num_open_dirs == 0) return;
-
-        int i = rand() % num_open_dirs;
-        prep_dir = open_dirs[i];
+    static void render_enemies()
+    {
+        for (auto& e : entities) {
+            e->render();
+        }
     }
 };
 
-struct Slime : public Entity
-{
-    int moveCooldown;
-    int parity;
-
-    Slime(int s_, int t_, EntityType type_)
-        : Entity(s_, t_, type_), moveCooldown(0), parity(0)
-    {}
-
-    virtual void think()
-    {
-        if (is_dead) return;
-
-        if (moveCooldown > 0) {
-            --moveCooldown;
-            return;
-        }
-
-        prep_dir = 3 * parity;
-        parity = (parity+1)%2;
-    }
-
-    virtual int consumePrepDir()
-    {
-        int d = Entity::consumePrepDir();
-        if (d != -1) moveCooldown = 1;
-        return d;
-    }
-};
-
-Entity * Entity::make(int s, int t, EntityType type)
-{
-    switch (type) {
-    case EntityType::bat_blue: return new Bat(s, t, type);
-    case EntityType::slime_blue: return new Slime(s, t, type);
-    default: assert(!"Unrecognized entity type"); return NULL;
-    }
-}
+std::vector<unique_ptr<Entity>> Entity::entities;
 
 void move_player(int dir)
 {
@@ -412,7 +391,7 @@ void move_player(int dir)
     if (is_tile_blocking(target_s, target_t)) return;
 
     bool did_attack = false;
-    for (auto& e : entities) {
+    for (auto& e : Entity::entities) {
         if (e->s == target_s && e->t == target_t && !e->is_dead) {
             did_attack = true;
             e->be_hit();
@@ -424,13 +403,7 @@ void move_player(int dir)
         player_t = target_t;
     }
 
-    //// enemy movement
-    for (auto& e : entities) {
-        e->move();
-    }
-    for (auto& e : entities) {
-        e->think();
-    }
+    Entity::move_enemies();
 }
 
 std::string current_map_path;
@@ -466,23 +439,24 @@ void load_map()
 
     auto e_json = j.find("entities");
     assert(e_json != j.end());
-    entities.clear();
+    Entity::entities.clear();
     for (auto& rec : *e_json) {
-        int s = rec["s"].get<int>();
-        int t = rec["t"].get<int>();
+        unique_ptr<Entity> e(new Entity);
+        e->s = rec["s"].get<int>();
+        e->t = rec["t"].get<int>();
+
         std::string type = rec["type"].get<std::string>();
-
-        EntityType entity_type = EntityType::none;
-
         if (type == "enemy_bat_blue") {
-            entity_type = EntityType::bat_blue;
+            e->type = EntityType::bat_blue;
         } else if (type == "enemy_slime_blue") {
-            entity_type = EntityType::slime_blue;
+            e->type = EntityType::slime_blue;
         } else {
             assert(!"Unrecognized entity type");
         }
 
-        entities.emplace_back(Entity::make(s, t, entity_type));
+        e->init();
+
+        Entity::entities.push_back(std::move(e));
     }
 }
 
@@ -600,10 +574,8 @@ void render()
         SDL_RenderCopy(ren, tex, NULL, &dstrect);
     }
 
-    //// draw entities
-    for (auto& e : entities) {
-        e->render();
-    }
+    //// draw enemies
+    Entity::render_enemies();
 
     //// draw player
     int player_x_px, player_y_px;
