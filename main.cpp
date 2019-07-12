@@ -119,11 +119,12 @@ struct Sprite
 
 std::map<std::string, unique_ptr<Sprite>> sprites;
 
-void LoadSprite(const char * path)
+void LoadSprite(const char * path, int nframes = 1)
 {
     unique_ptr<Sprite> s(new Sprite);
     s->tex.reset(LoadTexture(ren, path));
     CHECK_SDL(SDL_QueryTexture(s->tex.get(), NULL, NULL, &s->w, &s->h));
+    s->w /= nframes;
     sprites[path] = std::move(s);
 }
 
@@ -410,8 +411,17 @@ struct Entity
         int x_px, y_px;
         hex_to_screen(s, t, &x_px, &y_px);
 
+        int frame = 0;
+
+        if (type == EntityType::skeleton_white) {
+            if (moveCooldown == 0) {
+                frame = 1;
+            }
+        }
+
+        SDL_Rect srcrect = { frame * sprite->w, 0, sprite->w, sprite->h };
         SDL_Rect dstrect = { x_px - sprite->w/2, y_px - sprite->h/2, sprite->w, sprite->h };
-        SDL_RenderCopy(ren, sprite->tex.get(), NULL, &dstrect);
+        SDL_RenderCopy(ren, sprite->tex.get(), &srcrect, &dstrect);
 
         // telegraph arrow
         int tile_x_px = x_px - tile_floor_w/2;
@@ -458,7 +468,7 @@ struct Entity
     {
         LoadSprite("data/bat_blue.png");
         LoadSprite("data/slime_blue.png");
-        LoadSprite("data/skeleton_white.png");
+        LoadSprite("data/skeleton_white.png", 2);
 
         FOR(d,NDIRS) {
             std::string path = "data/telegraph_arrow_";
