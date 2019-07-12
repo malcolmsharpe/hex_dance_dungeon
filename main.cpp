@@ -318,7 +318,7 @@ struct Entity
                 int new_s = s + DIR_DS[d];
                 int new_t = t + DIR_DT[d];
 
-                if (is_tile_blocking(new_s, new_t)) continue;
+                if (is_tile_blocking(new_s, new_t) || Entity::is_at(new_s, new_t)) continue;
 
                 // Always hit player when possible
                 if (player_s == new_s && player_t == new_t) {
@@ -350,13 +350,7 @@ struct Entity
         int target_s = s + DIR_DS[move_dir];
         int target_t = t + DIR_DT[move_dir];
 
-        if (is_tile_blocking(target_s, target_t)) return;
-
-        for (auto& e : entities) {
-            if (!e->is_dead && e->s == target_s && e->t == target_t) {
-                return;
-            }
-        }
+        if (is_tile_blocking(target_s, target_t) || Entity::is_at(target_s, target_t)) return;
 
         if (player_s == target_s && player_t == target_t) {
             player_be_hit();
@@ -508,6 +502,21 @@ struct Entity
             e->render();
         }
     }
+
+    static Entity * get_at(int s, int t)
+    {
+        for (auto& e : entities) {
+            if (!e->is_dead && e->s == s && e->t == t) {
+                return e.get();
+            }
+        }
+        return NULL;
+    }
+
+    static bool is_at(int s, int t)
+    {
+        return get_at(s, t) != NULL;
+    }
 };
 
 std::vector<unique_ptr<Entity>> Entity::entities;
@@ -529,11 +538,10 @@ void move_player(int dir)
     if (is_tile_blocking(target_s, target_t)) return;
 
     bool did_attack = false;
-    for (auto& e : Entity::entities) {
-        if (e->s == target_s && e->t == target_t && !e->is_dead) {
-            did_attack = true;
-            e->be_hit();
-        }
+    Entity * e = Entity::get_at(target_s, target_t);
+    if (e) {
+        did_attack = true;
+        e->be_hit();
     }
 
     if (!did_attack) {
