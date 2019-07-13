@@ -278,47 +278,69 @@ enum class EntityType
     skeleton_white
 };
 
-double const TWEEN_LEN_S = 0.08;
+enum class TweenType
+{
+    none,
+    move,
+    bump
+};
+
+double const TWEEN_MOVE_LEN_S = 0.08;
+double const TWEEN_BUMP_LEN_S = 0.08;
 
 struct Tweener
 {
+    TweenType type = TweenType::none;
     int src_x_px=0, src_y_px=0, dst_x_px=0, dst_y_px=0;
-    double t;
+    double t = 0.0;
 
-    void ease_pos_px(std::tuple<int, int> pos_px)
+    void ease_move_px(std::tuple<int,int> src_px, std::tuple<int, int> dst_px)
     {
-        auto [ x_px, y_px ] = get_pos_px();
-        src_x_px = x_px;
-        src_y_px = y_px;
+        type = TweenType::move;
+        std::tie(src_x_px, src_y_px) = src_px;
+        std::tie(dst_x_px, dst_y_px) = dst_px;
+        t = 0;
+    }
 
-        std::tie(x_px, y_px) = pos_px;
-        dst_x_px = x_px;
-        dst_y_px = y_px;
-
+    void ease_bump_px(std::tuple<int, int> dst_px, std::tuple<int, int> bumped_px)
+    {
+        type = TweenType::bump;
+        std::tie(src_x_px, src_y_px) = bumped_px;
+        std::tie(dst_x_px, dst_y_px) = dst_px;
         t = 0;
     }
 
     void set_pos_px(std::tuple<int, int> pos_px)
     {
-        auto [ x_px, y_px ] = pos_px;
-        src_x_px = dst_x_px = x_px;
-        src_y_px = dst_y_px = y_px;
-
+        type = TweenType::none;
+        std::tie(dst_x_px, dst_y_px) = pos_px;
         t = 0;
     }
 
     std::tuple<int, int> get_pos_px()
     {
-        int x_px = dst_x_px, y_px = dst_y_px;
+        if (type == TweenType::none) return make_tuple(dst_x_px, dst_y_px);
+
+        double tween_len_s = 0.0;
+        if (type == TweenType::move) tween_len_s = TWEEN_MOVE_LEN_S;
+        if (type == TweenType::bump) tween_len_s = TWEEN_BUMP_LEN_S;
 
         t += deltaFrame_s;
-        if (t < TWEEN_LEN_S) {
-            double pct = (TWEEN_LEN_S - t) / TWEEN_LEN_S;
-
-            double alpha = (1 - cos(pct * M_PI / 2));
-            x_px += static_cast<int>(round((src_x_px - x_px) * alpha));
-            y_px += static_cast<int>(round((src_y_px - y_px) * alpha));
+        if (t > tween_len_s) {
+            type = TweenType::none;
+            return make_tuple(dst_x_px, dst_y_px);
         }
+        double pct = (tween_len_s - t) / tween_len_s;
+        int x_px = dst_x_px, y_px = dst_y_px;
+        double alpha = (1 - cos(pct * M_PI / 2));
+
+        if (type == TweenType::bump) {
+            if (alpha > 0.5) alpha = 1.0 - alpha;
+            alpha *= 0.5;
+        }
+
+        x_px += static_cast<int>(round((src_x_px - x_px) * alpha));
+        y_px += static_cast<int>(round((src_y_px - y_px) * alpha));
 
         return make_tuple(x_px, y_px);
     }
@@ -366,11 +388,14 @@ struct Entity
                     hex_dist(s, t, player_prev_s, player_prev_t),
                     0);
 
+            // If all our desired moves are blocked, then instead of standing still,
+            // bump whichever tile we'd most like to be empty.
+            auto bump_key = best_key;
+            int bump_dir = -1;
+
             FOR(d,NDIRS) {
                 int new_s = s + DIR_DS[d];
                 int new_t = t + DIR_DT[d];
-
-                if (is_tile_blocking(new_s, new_t) || Entity::is_at(new_s, new_t)) continue;
 
                 // Always hit player when possible
                 if (player_s == new_s && player_t == new_t) {
@@ -383,11 +408,20 @@ struct Entity
                         hex_dist(new_s, new_t, player_prev_s, player_prev_t),
                         dir_deviation(momentum_dir, d));
 
+                if (cur_key < bump_key) {
+                    bump_key = cur_key;
+                    bump_dir = d;
+                }
+
+                if (is_tile_blocking(new_s, new_t) || Entity::is_at(new_s, new_t)) continue;
+
                 if (cur_key < best_key) {
                     best_key = cur_key;
                     move_dir = d;
                 }
             }
+
+            if (move_dir == -1) move_dir = bump_dir;
         }
 
         if (move_dir == -1) return;
@@ -402,14 +436,15 @@ struct Entity
         int target_s = s + DIR_DS[move_dir];
         int target_t = t + DIR_DT[move_dir];
 
-        if (is_tile_blocking(target_s, target_t) || Entity::is_at(target_s, target_t)) return;
-
-        if (player_s == target_s && player_t == target_t) {
+        if (is_tile_blocking(target_s, target_t) || Entity::is_at(target_s, target_t)) {
+            tweener.ease_bump_px(hex_to_pixel(s, t), hex_to_pixel(target_s, target_t));
+        } else if (player_s == target_s && player_t == target_t) {
+            tweener.ease_bump_px(hex_to_pixel(s, t), hex_to_pixel(target_s, target_t));
             player_be_hit();
         } else {
+            tweener.ease_move_px(hex_to_pixel(s, t), hex_to_pixel(target_s, target_t));
             s = target_s;
             t = target_t;
-            tweener.ease_pos_px(hex_to_pixel(s, t));
         }
     }
 
