@@ -771,6 +771,10 @@ void update()
                 warp_to_map("data/map_skeleton.json");
             } else if (e.key.keysym.sym == SDLK_4) {
                 warp_to_map("data/map_skeleton_line.json");
+            } else if (e.key.keysym.sym == SDLK_5) {
+                warp_to_map("data/map_proto1.json");
+            } else if (e.key.keysym.sym == SDLK_6) {
+                warp_to_map("data/map_proto2.json");
             } else if (e.key.keysym.sym == SDLK_0) {
                 warp_to_map("data/map_mix.json");
             }
