@@ -641,15 +641,115 @@ void move_player(int dir)
     Entity::move_enemies();
 }
 
+struct MapBuilder
+{
+    int player_s=0, player_t=0;
+    json tiles = json::array();
+    json entities = json::array();
+
+    void player(int s, int t)
+    {
+        player_s = s;
+        player_t = t;
+    }
+
+    void tile(int s, int t, const char * type)
+    {
+        tiles.push_back({ { "s", s }, { "t", t }, { "type", type } });
+    }
+
+    void entity(int s, int t, const char * type)
+    {
+        entities.push_back({ { "s", s }, { "t", t }, { "type", type } });
+    }
+
+    void hex_room(int min_s, int min_t, int s_len, int t_len, int trim_min, int trim_max)
+    {
+        int max_s = min_s + s_len;
+        int max_t = min_t + t_len;
+
+        FR(s, min_s, max_s+1) {
+            FR(t, min_t, max_t+1) {
+                int slack_min = (s - min_s + t - min_t) - trim_min;
+                int slack_max = (max_s - s + max_t - t) - trim_max;
+
+                if (slack_min < 0 || slack_max < 0) continue;
+
+                const char * type = "wall";
+                if (min_s < s && s < max_s && min_t < t && t < max_t && slack_min > 0 && slack_max > 0) {
+                    type = "floor";
+                }
+
+                tile(s, t, type);
+            }
+        }
+    }
+
+    json make_json()
+    {
+        json j;
+
+        j["player_s"] = player_s;
+        j["player_t"] = player_t;
+        j["tiles"] = tiles;
+        j["entities"] = entities;
+
+        return j;
+    }
+};
+
+json random_map_json()
+{
+    MapBuilder b;
+
+    b.hex_room(0, -6, 7, 6, 3, 3);
+    b.hex_room(3, -12, 7, 6, 3, 3);
+
+    b.hex_room(4, -3, 7, 6, 3, 3);
+    b.hex_room(7, -9, 7, 6, 3, 3);
+    b.hex_room(10, -15, 7, 6, 3, 3);
+
+    b.hex_room(11, -6, 7, 6, 3, 3);
+    b.hex_room(14, -12, 7, 6, 3, 3);
+
+    b.tile(5, -6, "floor");
+    b.tile(7, -5, "floor");
+    b.tile(5, -1, "floor");
+
+    b.tile(10, -10, "floor");
+    b.tile(12, -9, "floor");
+    b.tile(11, -2, "floor");
+    b.tile(12, -4, "floor");
+
+    b.tile(15, -10, "floor");
+    b.tile(16, -6, "floor");
+
+    b.player(3, -3);
+
+    int s0[] = { 3, 4, 7, 10, 11, 14 };
+    int t0[] = { -12, -3, -9, -15, -6, -12 };
+
+    FOR(i,6) {
+        b.entity(s0[i]+2, t0[i]+2, "enemy_slime_blue");
+        b.entity(s0[i]+4, t0[i]+2, "enemy_bat_blue");
+        b.entity(s0[i]+1, t0[i]+4, "enemy_skeleton_white");
+        b.entity(s0[i]+3, t0[i]+4, "enemy_slime_blue");
+    }
+
+    return b.make_json();
+}
+
 std::string current_map_path;
 
 void load_map()
 {
-    // load map
     json j;
-    std::ifstream i(current_map_path);
-    i >> j;
-    i.close();
+    if (current_map_path == "random") {
+        j = random_map_json();
+    } else {
+        std::ifstream i(current_map_path);
+        i >> j;
+    }
 
     player_s = j["player_s"].get<int>();
     player_t = j["player_t"].get<int>();
@@ -775,6 +875,8 @@ void update()
                 warp_to_map("data/map_proto1.json");
             } else if (e.key.keysym.sym == SDLK_6) {
                 warp_to_map("data/map_proto2.json");
+            } else if (e.key.keysym.sym == SDLK_7) {
+                warp_to_map("random");
             } else if (e.key.keysym.sym == SDLK_0) {
                 warp_to_map("data/map_mix.json");
             }
