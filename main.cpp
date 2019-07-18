@@ -726,14 +726,35 @@ json random_map_json()
 
     b.player(3, -3);
 
-    int s0[] = { 3, 4, 7, 10, 11, 14 };
-    int t0[] = { -12, -3, -9, -15, -6, -12 };
+    int const NROOM = 6;
 
-    FOR(i,6) {
-        b.entity(s0[i]+2, t0[i]+2, "enemy_slime_blue");
-        b.entity(s0[i]+4, t0[i]+2, "enemy_bat_blue");
-        b.entity(s0[i]+1, t0[i]+4, "enemy_skeleton_white");
-        b.entity(s0[i]+3, t0[i]+4, "enemy_slime_blue");
+    std::vector<const char *> supplement = {
+        "enemy_skeleton_white",
+        "enemy_skeleton_white",
+        "enemy_slime_blue",
+        "enemy_slime_blue",
+        "enemy_bat_blue",
+        "enemy_bat_blue",
+        };
+
+    std::random_shuffle(BEND(supplement));
+
+    int s0[NROOM] = { 3, 4, 7, 10, 11, 14 };
+    int t0[NROOM] = { -12, -3, -9, -15, -6, -12 };
+
+    FOR(i,NROOM) {
+        std::vector<const char *> contents = {
+            "enemy_skeleton_white",
+            "enemy_slime_blue",
+            "enemy_bat_blue",
+            supplement[i],
+            };
+        random_shuffle(BEND(contents));
+
+        b.entity(s0[i]+3, t0[i]+2, contents[0]);
+        b.entity(s0[i]+5, t0[i]+2, contents[1]);
+        b.entity(s0[i]+2, t0[i]+4, contents[2]);
+        b.entity(s0[i]+4, t0[i]+4, contents[3]);
     }
 
     return b.make_json();
