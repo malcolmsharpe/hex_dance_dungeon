@@ -19,14 +19,17 @@
 // https://github.com/nlohmann/json
 #include "nlohmann/json.hpp"
 
-#define FR(i,a,b) for(int i=(a);i<(b);++i)
-#define FOR(i,n) FR(i,0,n)
-#define BEND(v) (v).begin(),(v).end()
+#include "hex_dance_dungeon.hpp"
 
 using std::make_pair;
 using std::unique_ptr;
 using nlohmann::json;
 using std::make_tuple;
+
+// Globals
+std::map<std::pair<int,int>, TileType> tiles;
+std::set<std::tuple<int,int>> is_visible;
+int player_s, player_t;
 
 // SDL utilities
 struct delete_sdl
@@ -243,18 +246,8 @@ std::tuple<int, int> hex_to_screen(int s, int t)
 
 double const CAMERA_TWEEN_SPEED = 10.0;
 
-int player_s, player_t;
 // Where was the player at the start of the current turn?
 int player_prev_s, player_prev_t;
-
-enum class TileType
-{
-    none,
-    floor,
-    wall
-};
-
-std::map<std::pair<int,int>, TileType> tiles;
 
 bool is_tile_blocking(int s, int t)
 {
@@ -492,6 +485,8 @@ struct Entity
         // main sprite
         auto [ x_px, y_px ] = pixel_to_screen(tweener.get_pos_px());
 
+        if (is_visible.find(make_tuple(s,t)) == is_visible.end()) return;
+
         int frame = 0;
 
         if (type == EntityType::skeleton_white) {
@@ -638,6 +633,8 @@ void move_player(int dir)
         player_t = target_t;
     }
 
+    compute_visibility();
+
     Entity::move_enemies();
 }
 
@@ -772,9 +769,6 @@ void load_map()
         i >> j;
     }
 
-    player_s = j["player_s"].get<int>();
-    player_t = j["player_t"].get<int>();
-
     tiles.clear();
     for (auto& rec : j["tiles"]) {
         int s = rec["s"].get<int>();
@@ -816,6 +810,9 @@ void load_map()
 
         Entity::entities.push_back(std::move(e));
     }
+
+    player_s = j["player_s"].get<int>();
+    player_t = j["player_t"].get<int>();
 }
 
 void snap_camera_to_player()
@@ -832,6 +829,7 @@ void reset_game()
     player_prev_s = player_s;
     player_prev_t = player_t;
     snap_camera_to_player();
+    compute_visibility();
 }
 
 void warp_to_map(std::string map_path)
@@ -928,6 +926,8 @@ void render()
         int s = it.first.first;
         int t = it.first.second;
         TileType type = it.second;
+
+        if (is_visible.find(make_tuple(s,t)) == is_visible.end()) continue;
 
         SDL_Texture * tex = NULL;
         switch (type) {
