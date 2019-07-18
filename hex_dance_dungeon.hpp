@@ -6,7 +6,8 @@ enum class TileType
 {
     none,
     floor,
-    wall
+    wall,
+    door
 };
 
 extern std::map<std::pair<int,int>, TileType> tiles;

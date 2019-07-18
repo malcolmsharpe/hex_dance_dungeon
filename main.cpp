@@ -114,6 +114,8 @@ sdl_ptr<SDL_Texture> tile_floor;
 int tile_floor_w;
 int tile_floor_h;
 sdl_ptr<SDL_Texture> tile_wall;
+int const NDOOR = 3;
+sdl_ptr<SDL_Texture> tile_door[NDOOR];
 
 struct Sprite
 {
@@ -172,6 +174,8 @@ double avgFrameTime_ms()
 }
 
 // main code
+bool cheat_vis = false;
+
 const int WIN_WIDTH = 1600;
 const int WIN_HEIGHT = 1200;
 
@@ -348,6 +352,11 @@ struct Tweener
     }
 };
 
+bool should_render_tile(int s, int t)
+{
+    return cheat_vis || tile_has_been_visible.find(make_tuple(s,t)) != tile_has_been_visible.end();
+}
+
 struct Entity
 {
     int s=0,t=0;
@@ -500,7 +509,7 @@ struct Entity
         // main sprite
         auto [ x_px, y_px ] = pixel_to_screen(tweener.get_pos_px());
 
-        if (tile_has_been_visible.find(make_tuple(s,t)) == tile_has_been_visible.end()) return;
+        if (!should_render_tile(s,t)) return;
 
         int frame = 0;
 
@@ -642,18 +651,28 @@ void move_player(int dir)
     int target_s = player_s + ds;
     int target_t = player_t + dt;
 
-    if (is_tile_blocking(target_s, target_t)) return;
+    auto i = tiles.find(make_pair(target_s,target_t));
+    if (i == tiles.end()) return;
 
-    bool did_attack = false;
-    Entity * e = Entity::get_at(target_s, target_t);
-    if (e) {
-        did_attack = true;
-        e->be_hit();
-    }
+    if (i->second == TileType::floor) {
+        // try to attack enemy there, if any
+        bool did_attack = false;
+        Entity * e = Entity::get_at(target_s, target_t);
+        if (e) {
+            did_attack = true;
+            e->be_hit();
+        }
 
-    if (!did_attack) {
-        player_s = target_s;
-        player_t = target_t;
+        // otherwise move
+        if (!did_attack) {
+            player_s = target_s;
+            player_t = target_t;
+        }
+    } else if (i->second == TileType::door) {
+        // open the door
+        tiles[make_pair(target_s,target_t)] = TileType::floor;
+    } else if (i->second == TileType::wall) {
+        // TODO: try to dig it
     }
 
     compute_visibility_plus();
@@ -732,17 +751,17 @@ json random_map_json()
     b.hex_room(11, -6, 7, 6, 3, 3);
     b.hex_room(14, -12, 7, 6, 3, 3);
 
-    b.tile(5, -6, "floor");
-    b.tile(7, -5, "floor");
-    b.tile(5, -1, "floor");
+    b.tile(5, -6, "door");
+    b.tile(7, -5, "door");
+    b.tile(5, -1, "door");
 
-    b.tile(10, -10, "floor");
-    b.tile(12, -9, "floor");
-    b.tile(11, -2, "floor");
-    b.tile(12, -4, "floor");
+    b.tile(10, -10, "door");
+    b.tile(12, -9, "door");
+    b.tile(11, -2, "door");
+    b.tile(12, -4, "door");
 
-    b.tile(15, -10, "floor");
-    b.tile(16, -6, "floor");
+    b.tile(15, -10, "door");
+    b.tile(16, -6, "door");
 
     b.player(3, -3);
 
@@ -803,6 +822,8 @@ void load_map()
             tile_type = TileType::wall;
         } else if (type == "floor") {
             tile_type = TileType::floor;
+        } else if (type == "door") {
+            tile_type = TileType::door;
         } else {
             assert(!"Unrecognized tile type");
         }
@@ -924,6 +945,11 @@ void update()
             } else if (e.key.keysym.sym == SDLK_0) {
                 warp_to_map("data/map_mix.json");
             }
+
+            // Cheats
+            if (e.key.keysym.sym == SDLK_v) {
+                cheat_vis = !cheat_vis;
+            }
         }
     }
 }
@@ -952,12 +978,13 @@ void render()
         int t = it.first.second;
         TileType type = it.second;
 
-        if (tile_has_been_visible.find(make_tuple(s,t)) == tile_has_been_visible.end()) continue;
+        if (!should_render_tile(s,t)) continue;
 
         SDL_Texture * tex = NULL;
         switch (type) {
         case TileType::floor: tex = tile_floor.get(); break;
         case TileType::wall: tex = tile_wall.get(); break;
+        case TileType::door: tex = tile_door[0].get(); break;
         case TileType::none:
             fprintf(stderr, "Tile at (%d,%d) has type = TileType::none\n", s, t);
             assert(!"Render encountered TileType::none");
@@ -1032,6 +1059,10 @@ int main()
     tile_floor.reset(LoadTexture(ren, "data/tile_floor.png"));
     CHECK_SDL(SDL_QueryTexture(tile_floor.get(), NULL, NULL, &tile_floor_w, &tile_floor_h));
     tile_wall.reset(LoadTexture(ren, "data/tile_wall.png"));
+
+    tile_door[0].reset(LoadTexture(ren, "data/tile_door_0.png"));
+    tile_door[1].reset(LoadTexture(ren, "data/tile_door_1.png"));
+    tile_door[2].reset(LoadTexture(ren, "data/tile_door_2.png"));
 
     Entity::load_textures();
 

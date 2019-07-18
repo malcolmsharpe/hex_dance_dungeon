@@ -14,7 +14,7 @@ def emit(path, map_str):
             if ch == '#':
                 tile_type = 'wall'
             elif ch == '+':
-                tile_type = 'floor' # TODO: actually door
+                tile_type = 'door'
             elif ch == '.':
                 tile_type = 'floor'
             elif ch == '@':
