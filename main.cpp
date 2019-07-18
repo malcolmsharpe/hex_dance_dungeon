@@ -347,6 +347,7 @@ struct Entity
     Sprite * sprite = NULL;
     Tweener tweener;
     bool is_dead = false;
+    bool has_been_visible = false;
 
     // bat_blue, slime_blue
     int prep_dir = -1;
@@ -360,9 +361,14 @@ struct Entity
     // skeleton_white
     int momentum_dir = 3;
 
+    bool is_inactive()
+    {
+        return is_dead || !has_been_visible;
+    }
+
     void move()
     {
-        if (is_dead) return;
+        if (is_inactive()) return;
 
         int move_dir = -1;
 
@@ -443,7 +449,7 @@ struct Entity
 
     void think()
     {
-        if (is_dead) return;
+        if (is_inactive()) return;
 
         if (type == EntityType::bat_blue) {
             int num_open_dirs = 0;
@@ -577,6 +583,14 @@ struct Entity
         }
         for (auto& e : prioritized) {
             e->think();
+        }
+
+        // Wake visible enemies AFTER movement,
+        // so that they don't start moving instantly when seen.
+        for (auto& e : entities) {
+            if (!e->has_been_visible && is_visible.find(make_tuple(e->s, e->t)) != is_visible.end()) {
+                e->has_been_visible = true;
+            }
         }
     }
 
