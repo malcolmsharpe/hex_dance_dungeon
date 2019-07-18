@@ -29,6 +29,7 @@ using std::make_tuple;
 // Globals
 std::map<std::pair<int,int>, TileType> tiles;
 std::set<std::tuple<int,int>> is_visible;
+std::set<std::tuple<int,int>> tile_has_been_visible;
 int player_s, player_t;
 
 // SDL utilities
@@ -254,6 +255,14 @@ bool is_tile_blocking(int s, int t)
     auto i = tiles.find(make_pair(s,t));
     if (i == tiles.end()) return false;
     return i->second != TileType::floor;
+}
+
+void compute_visibility_plus()
+{
+    compute_visibility();
+    for (auto& h : is_visible) {
+        tile_has_been_visible.insert(h);
+    }
 }
 
 void player_be_hit()
@@ -491,7 +500,7 @@ struct Entity
         // main sprite
         auto [ x_px, y_px ] = pixel_to_screen(tweener.get_pos_px());
 
-        if (is_visible.find(make_tuple(s,t)) == is_visible.end()) return;
+        if (tile_has_been_visible.find(make_tuple(s,t)) == tile_has_been_visible.end()) return;
 
         int frame = 0;
 
@@ -647,7 +656,7 @@ void move_player(int dir)
         player_t = target_t;
     }
 
-    compute_visibility();
+    compute_visibility_plus();
 
     Entity::move_enemies();
 }
@@ -843,7 +852,9 @@ void reset_game()
     player_prev_s = player_s;
     player_prev_t = player_t;
     snap_camera_to_player();
-    compute_visibility();
+
+    tile_has_been_visible.clear();
+    compute_visibility_plus();
 }
 
 void warp_to_map(std::string map_path)
@@ -941,7 +952,7 @@ void render()
         int t = it.first.second;
         TileType type = it.second;
 
-        if (is_visible.find(make_tuple(s,t)) == is_visible.end()) continue;
+        if (tile_has_been_visible.find(make_tuple(s,t)) == tile_has_been_visible.end()) continue;
 
         SDL_Texture * tex = NULL;
         switch (type) {
