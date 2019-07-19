@@ -65,7 +65,7 @@ static void process_one_rot()
     vis_ivls.clear();
     vis_ivls.push_back(make_tuple(Slope(0,1), Slope(1,1)));
 
-    for (int x = 2; ; ++x) {
+    for (int x = 2; !vis_ivls.empty(); ++x) {
         next_vis_ivls.clear();
 
         for (auto [ vis_open, vis_close ] : vis_ivls) {
@@ -99,8 +99,6 @@ static void process_one_rot()
         }
 
         std::swap(vis_ivls, next_vis_ivls);
-
-        if (vis_ivls.size() == 0) break;
     }
 }
 
