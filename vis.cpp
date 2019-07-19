@@ -18,7 +18,7 @@ struct Slope
     }
 };
 
-bool operator<=(Slope const & a, Slope const & b)
+static bool operator<=(Slope const & a, Slope const & b)
 {
     return !(b < a);
 }
@@ -26,8 +26,8 @@ bool operator<=(Slope const & a, Slope const & b)
 static int nrot;
 static std::tuple<int,int> st_of_xy(int x, int y)
 {
-    int t = y/3;
-    int s = (x-t)/2;
+    int s = (2*x-y)/3;
+    int t = (2*y-x)/3;
     int p = -s-t;
 
     FOR(i,nrot) {
@@ -38,141 +38,69 @@ static std::tuple<int,int> st_of_xy(int x, int y)
     return make_tuple(player_s+s, player_t+t);
 }
 
-struct TileRec
+static void mark_visible_xy(int x, int y)
 {
-    int x,y1,y2;
-    int s,t;
-    TileType type;
+    auto [ s, t ] = st_of_xy(x, y);
 
-    TileRec(int x_, int yc)
-        : x(x_)
-        , y1(yc - 2)
-        , y2(yc + 2)
-    {
-        std::tie(s, t) = st_of_xy(x, yc);
-        auto it = tiles.find(make_pair(s,t));
-        if (it == tiles.end()) {
-            type = TileType::none;
-        } else {
-            type = it->second;
-        }
-    }
-
-    void mark_visible()
-    {
+    if (tiles.find(make_pair(s,t)) != tiles.end()) {
         is_visible.insert(make_tuple(s,t));
     }
-};
+}
 
-static std::vector<TileRec> tilerecs;
-
-enum class MergeType
+static bool is_tile_opaque_xy(int x, int y)
 {
-    open_shadow,
-    open_tile,
-    close_tile,
-    close_shadow,
-};
+    auto [ s, t ] = st_of_xy(x, y);
 
-static std::vector<std::tuple<Slope, MergeType, TileRec*>> events;
-static std::vector<std::tuple<Slope, Slope>> shadows;
+    auto it = tiles.find(make_pair(s,t));
+    if (it == tiles.end()) return true;
+    TileType type = it->second;
+    return type != TileType::floor;
+}
+
+static std::vector<std::tuple<Slope, Slope>> vis_ivls;
+static std::vector<std::tuple<Slope, Slope>> next_vis_ivls;
 
 static void process_one_rot()
 {
-    shadows.clear();
+    vis_ivls.clear();
+    vis_ivls.push_back(make_tuple(Slope(0,1), Slope(1,1)));
 
     for (int x = 2; ; ++x) {
-        int yc;
-        if (x%2 == 0) {
-            yc = -6*((x+7)/6 - 1);
-        } else {
-            yc = -3 - 6*((x+4)/6 - 1);
-        }
+        next_vis_ivls.clear();
 
-        tilerecs.clear();
-        events.clear();
+        for (auto [ vis_open, vis_close ] : vis_ivls) {
+            int a = vis_open.dy, b = vis_open.dx;
+            int k = ((a+b)*x + 2*b) / (3*b);
 
-        for (auto [ slope1, slope2 ] : shadows) {
-            events.push_back(make_tuple(slope1, MergeType::open_shadow, nullptr));
-            events.push_back(make_tuple(slope2, MergeType::close_shadow, nullptr));
-        }
+            Slope next_vis_open = vis_open;
 
-        while (true) {
-            TileRec rec(x, yc);
-            if (x <= rec.y1) break;
-            tilerecs.push_back(rec);
+            while (true) {
+                int yc = 3*k - x;
 
-            yc += 6;
-        }
+                Slope tile_open(yc-1, x), tile_close(yc+1, x);
 
-        for (auto& rec : tilerecs) {
-            Slope slope1 = Slope(rec.y1, rec.x);
-            if (slope1 < Slope(-1,1)) slope1 = Slope(-1,1);
-            Slope slope2 = Slope(rec.y2, rec.x);
-            if (Slope(1,1) < slope2) slope2 = Slope(1,1);
+                if (vis_close <= tile_open) break;
 
-            events.push_back(make_tuple(slope1, MergeType::open_tile, &rec));
-            events.push_back(make_tuple(slope2, MergeType::close_tile, &rec));
-        }
+                mark_visible_xy(x, yc);
 
-        sort(BEND(events));
+                if (is_tile_opaque_xy(x, yc)) {
+                    if (next_vis_open < tile_open) {
+                        next_vis_ivls.push_back(make_tuple(next_vis_open, tile_open));
+                    }
+                    next_vis_open = tile_close;
+                }
 
-        shadows.clear();
-
-        TileRec * active_rec = nullptr;
-        bool is_shadowed = false;
-        int shadow_cast = 0;
-
-        bool is_shadow_open = false;
-        Slope shadow_start_slope;
-
-        for (auto [ slope, mtype, recptr ] : events) {
-            switch (mtype) {
-            case MergeType::open_shadow: {
-                is_shadowed = true;
-                ++shadow_cast;
-                break;
-            }
-            case MergeType::open_tile: {
-                if (recptr->type != TileType::floor) ++shadow_cast;
-                active_rec = recptr;
-                break;
-            }
-            case MergeType::close_tile: {
-                if (recptr->type != TileType::floor) --shadow_cast;
-                if (recptr == active_rec) active_rec = nullptr;
-                break;
-            }
-            case MergeType::close_shadow: {
-                is_shadowed = false;
-                --shadow_cast;
-                break;
-            }
+                ++k;
             }
 
-            if (shadow_cast > 0 && !is_shadow_open) {
-                is_shadow_open = true;
-                shadow_start_slope = slope;
-            }
-
-            // active tile is visible
-            if (!is_shadowed && active_rec) {
-                active_rec->mark_visible();
-            }
-
-            // store merged shadow
-            if (shadow_cast == 0 && is_shadow_open) {
-                is_shadow_open = false;
-                shadows.push_back(make_tuple(shadow_start_slope, slope));
+            if (next_vis_open < vis_close) {
+                next_vis_ivls.push_back(make_tuple(next_vis_open, vis_close));
             }
         }
 
-        // Abort when shadow covers entire arc
-        if (shadows.size() == 1) {
-            auto [ slope1, slope2 ] = shadows[0];
+        std::swap(vis_ivls, next_vis_ivls);
 
-            if (slope1 <= Slope(-1,1) && Slope(1,1) <= slope2) break;
-        }
+        if (vis_ivls.size() == 0) break;
     }
 }
 
