@@ -258,7 +258,13 @@ enum class TileType
     door
 };
 
-std::map<std::pair<int,int>, TileType> tiles;
+struct Tile
+{
+    TileType type = TileType::none;
+    int rotation = 0;
+};
+
+std::map<std::pair<int,int>, Tile> tiles;
 
 std::set<std::tuple<int,int>> is_visible;
 std::set<std::tuple<int,int>> tile_has_been_visible;
@@ -274,14 +280,14 @@ bool is_tile_opaque(int s, int t)
 {
     auto it = tiles.find(make_pair(s,t));
     if (it == tiles.end()) return true;
-    return it->second != TileType::floor;
+    return it->second.type != TileType::floor;
 }
 
 bool is_tile_blocking(int s, int t)
 {
     auto i = tiles.find(make_pair(s,t));
     if (i == tiles.end()) return false;
-    return i->second != TileType::floor;
+    return i->second.type != TileType::floor;
 }
 
 void compute_visibility_plus()
@@ -751,7 +757,7 @@ void move_player(int dir)
     auto i = tiles.find(make_pair(target_s,target_t));
     if (i == tiles.end()) return;
 
-    if (i->second == TileType::floor) {
+    if (i->second.type == TileType::floor) {
         // try to attack enemy there, if any
         Entity * e = Entity::get_at(target_s, target_t);
         if (e) {
@@ -763,10 +769,12 @@ void move_player(int dir)
             player_s = target_s;
             player_t = target_t;
         }
-    } else if (i->second == TileType::door) {
+    } else if (i->second.type == TileType::door) {
         // open the door
-        tiles[make_pair(target_s,target_t)] = TileType::floor;
-    } else if (i->second == TileType::wall) {
+        Tile new_tile;
+        new_tile.type = TileType::floor;
+        tiles[make_pair(target_s,target_t)] = new_tile;
+    } else if (i->second.type == TileType::wall) {
         // TODO: try to dig it
     }
 
@@ -787,9 +795,9 @@ struct MapBuilder
         player_t = t;
     }
 
-    void tile(int s, int t, const char * type)
+    void tile(int s, int t, const char * type, int rotation = 0)
     {
-        tiles.push_back({ { "s", s }, { "t", t }, { "type", type } });
+        tiles.push_back({ { "s", s }, { "t", t }, { "type", type }, { "rotation", rotation } });
     }
 
     void entity(int s, int t, const char * type)
@@ -846,17 +854,17 @@ json random_map_json()
     b.hex_room(11, -6, 7, 6, 3, 3);
     b.hex_room(14, -12, 7, 6, 3, 3);
 
-    b.tile(5, -6, "door");
-    b.tile(7, -5, "door");
-    b.tile(5, -1, "door");
+    b.tile(5, -6, "door", 0);
+    b.tile(7, -5, "door", 1);
+    b.tile(5, -1, "door", 2);
 
-    b.tile(10, -10, "door");
-    b.tile(12, -9, "door");
-    b.tile(11, -2, "door");
-    b.tile(12, -4, "door");
+    b.tile(10, -10, "door", 1);
+    b.tile(12, -9, "door", 0);
+    b.tile(11, -2, "door", 1);
+    b.tile(12, -4, "door", 2);
 
-    b.tile(15, -10, "door");
-    b.tile(16, -6, "door");
+    b.tile(15, -10, "door", 2);
+    b.tile(16, -6, "door", 0);
 
     b.player(3, -3);
 
@@ -932,18 +940,19 @@ void load_map()
         int t = rec["t"].get<int>();
         std::string type = rec["type"].get<std::string>();
 
-        TileType tile_type = TileType::none;
+        Tile tile;
         if (type == "wall") {
-            tile_type = TileType::wall;
+            tile.type = TileType::wall;
         } else if (type == "floor") {
-            tile_type = TileType::floor;
+            tile.type = TileType::floor;
         } else if (type == "door") {
-            tile_type = TileType::door;
+            tile.type = TileType::door;
+            tile.rotation = rec["rotation"].get<int>();
         } else {
             assert(!"Unrecognized tile type");
         }
 
-        tiles[make_pair(s,t)] = tile_type;
+        tiles[make_pair(s,t)] = tile;
     }
 
     auto e_json = j.find("entities");
@@ -1082,15 +1091,15 @@ void render()
     for (auto& it : tiles) {
         int s = it.first.first;
         int t = it.first.second;
-        TileType type = it.second;
+        Tile tile = it.second;
 
         if (!should_render_tile(s,t)) continue;
 
         SDL_Texture * tex = NULL;
-        switch (type) {
+        switch (tile.type) {
         case TileType::floor: tex = tile_floor.get(); break;
         case TileType::wall: tex = tile_wall.get(); break;
-        case TileType::door: tex = tile_door[0].get(); break;
+        case TileType::door: tex = tile_door[tile.rotation].get(); break;
         case TileType::none:
             fprintf(stderr, "Tile at (%d,%d) has type = TileType::none\n", s, t);
             assert(!"Render encountered TileType::none");
