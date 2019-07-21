@@ -1,20 +1,7 @@
-#include <map>
-#include <set>
-#include <utility>
+bool is_tile_opaque(int s, int t);
+void mark_tile_visible(int s, int t);
 
-enum class TileType
-{
-    none,
-    floor,
-    wall,
-    door
-};
-
-extern std::map<std::pair<int,int>, TileType> tiles;
-extern std::set<std::tuple<int,int>> is_visible;
-extern int player_s, player_t;
-
-void compute_visibility();
+void compute_visibility(int origin_s, int origin_t);
 
 // Convenience macros
 #define FR(i,a,b) for(int i=(a);i<(b);++i)

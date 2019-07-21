@@ -6,6 +6,7 @@
 #include <ctime>
 #include <fstream>
 #include <map>
+#include <set>
 #include <vector>
 
 #include <SDL.h>
@@ -25,12 +26,6 @@ using std::make_pair;
 using std::unique_ptr;
 using nlohmann::json;
 using std::make_tuple;
-
-// Globals
-std::map<std::pair<int,int>, TileType> tiles;
-std::set<std::tuple<int,int>> is_visible;
-std::set<std::tuple<int,int>> tile_has_been_visible;
-int player_s, player_t;
 
 // SDL utilities
 struct delete_sdl
@@ -251,8 +246,36 @@ std::tuple<int, int> hex_to_screen(int s, int t)
 
 double const CAMERA_TWEEN_SPEED = 10.0;
 
+int player_s, player_t;
 // Where was the player at the start of the current turn?
 int player_prev_s, player_prev_t;
+
+enum class TileType
+{
+    none,
+    floor,
+    wall,
+    door
+};
+
+std::map<std::pair<int,int>, TileType> tiles;
+
+std::set<std::tuple<int,int>> is_visible;
+std::set<std::tuple<int,int>> tile_has_been_visible;
+
+void mark_tile_visible(int s, int t)
+{
+    if (tiles.find(make_pair(s,t)) != tiles.end()) {
+        is_visible.insert(make_tuple(s,t));
+    }
+}
+
+bool is_tile_opaque(int s, int t)
+{
+    auto it = tiles.find(make_pair(s,t));
+    if (it == tiles.end()) return true;
+    return it->second != TileType::floor;
+}
 
 bool is_tile_blocking(int s, int t)
 {
@@ -263,7 +286,8 @@ bool is_tile_blocking(int s, int t)
 
 void compute_visibility_plus()
 {
-    compute_visibility();
+    is_visible.clear();
+    compute_visibility(player_s, player_t);
     for (auto& h : is_visible) {
         tile_has_been_visible.insert(h);
     }

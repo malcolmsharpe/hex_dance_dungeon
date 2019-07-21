@@ -1,3 +1,4 @@
+#include <utility>
 #include <vector>
 
 #include "hex_dance_dungeon.hpp"
@@ -8,9 +9,6 @@ using std::make_tuple;
 struct Slope
 {
     int dy=0, dx=1;
-
-    Slope() {}
-    Slope(int dy_, int dx_) : dy(dy_), dx(dx_) {}
 
     bool operator<(Slope const & o) const
     {
@@ -23,6 +21,8 @@ static bool operator<=(Slope const & a, Slope const & b)
     return !(b < a);
 }
 
+static int origin_s;
+static int origin_t;
 static int nrot;
 static std::tuple<int,int> st_of_xy(int x, int y)
 {
@@ -35,26 +35,19 @@ static std::tuple<int,int> st_of_xy(int x, int y)
         std::tie(s,t,p) = make_tuple(-p,-s,-t);
     }
     
-    return make_tuple(player_s+s, player_t+t);
+    return make_tuple(origin_s+s, origin_t+t);
 }
 
 static void mark_visible_xy(int x, int y)
 {
     auto [ s, t ] = st_of_xy(x, y);
-
-    if (tiles.find(make_pair(s,t)) != tiles.end()) {
-        is_visible.insert(make_tuple(s,t));
-    }
+    mark_tile_visible(s, t);
 }
 
 static bool is_tile_opaque_xy(int x, int y)
 {
     auto [ s, t ] = st_of_xy(x, y);
-
-    auto it = tiles.find(make_pair(s,t));
-    if (it == tiles.end()) return true;
-    TileType type = it->second;
-    return type != TileType::floor;
+    return is_tile_opaque(s, t);
 }
 
 static std::vector<std::tuple<Slope, Slope>> vis_ivls;
@@ -63,7 +56,7 @@ static std::vector<std::tuple<Slope, Slope>> next_vis_ivls;
 static void process_one_rot()
 {
     vis_ivls.clear();
-    vis_ivls.push_back(make_tuple(Slope(0,1), Slope(1,1)));
+    vis_ivls.push_back(make_tuple(Slope {0,1}, Slope {1,1}));
 
     for (int x = 2; !vis_ivls.empty(); ++x) {
         next_vis_ivls.clear();
@@ -77,7 +70,7 @@ static void process_one_rot()
             while (true) {
                 int yc = 3*k - x;
 
-                Slope tile_open(yc-1, x), tile_close(yc+1, x);
+                Slope tile_open {yc-1, x}, tile_close {yc+1, x};
 
                 if (vis_close <= tile_open) break;
 
@@ -102,10 +95,12 @@ static void process_one_rot()
     }
 }
 
-void compute_visibility()
+void compute_visibility(int origin_s, int origin_t)
 {
-    is_visible.clear();
-    is_visible.insert(make_tuple(player_s,player_t));
+    ::origin_s = origin_s;
+    ::origin_t = origin_t;
+
+    mark_tile_visible(origin_s, origin_t);
     for (nrot = 0; nrot < 6; ++nrot) {
         process_one_rot();
     }
