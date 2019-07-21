@@ -282,6 +282,7 @@ enum class EntityType
     bat_blue,
     bat_red,
     slime_blue,
+    ghost,
     skeleton_white
 };
 
@@ -382,7 +383,10 @@ struct Entity
     // slime_blue
     int parity = 0;
 
-    // skeleton_white
+    // ghost
+    bool hiding = true;
+
+    // ghost, skeleton_white
     int momentum_dir = 3;
 
     bool is_inactive()
@@ -394,6 +398,19 @@ struct Entity
     {
         if (is_inactive()) return;
 
+        if (type == EntityType::ghost) {
+            int player_dist = hex_dist(s, t, player_s, player_t);
+            int player_prev_dist = hex_dist(s, t, player_prev_s, player_prev_t);
+
+            if (player_dist > player_prev_dist) {
+                hiding = false;
+            } else if (player_dist < player_prev_dist) {
+                hiding = true;
+            }
+
+            if (hiding) return;
+        }
+
         if (moveCooldown > 0) {
             --moveCooldown;
             return;
@@ -404,7 +421,7 @@ struct Entity
         if (type == EntityType::bat_blue || type == EntityType::bat_red || type == EntityType::slime_blue) {
             move_dir = prep_dir;
             prep_dir = -1;
-        } else if (type == EntityType::skeleton_white) {
+        } else if (type == EntityType::skeleton_white || type == EntityType::ghost) {
             // If we can't get closer to the player's current or previous position, prefer standing still.
             auto best_key = make_tuple(
                     hex_dist(s, t, player_s, player_t),
@@ -518,6 +535,7 @@ struct Entity
 
         int frame = 0;
         if (moveCooldown == 0) frame = frameTelegraph;
+        if (type == EntityType::ghost && hiding) frame = 1;
 
         SDL_Rect srcrect = { frame * sprite->w, 0, sprite->w, sprite->h };
         SDL_Rect dstrect = { x_px - sprite->w/2, y_px - sprite->h/2, sprite->w, sprite->h };
@@ -562,6 +580,10 @@ struct Entity
             thinkCooldownMax = 1;
             break;
         }
+        case EntityType::ghost: {
+            sprite = sprites.at("data/ghost.png").get();
+            break;
+        }
         case EntityType::skeleton_white: {
             sprite = sprites.at("data/skeleton_white.png").get();
             moveCooldownMax = 1;
@@ -599,6 +621,7 @@ struct Entity
         LoadSprite("data/bat_blue.png");
         LoadSprite("data/bat_red.png");
         LoadSprite("data/slime_blue.png");
+        LoadSprite("data/ghost.png", 2);
         LoadSprite("data/skeleton_white.png", 2);
 
         FOR(d,NDIRS) {
@@ -609,6 +632,17 @@ struct Entity
             LoadSprite(path.c_str());
             telegraph_arrows[d] = sprites[path].get();
         }
+    }
+
+    static EntityType deserialize_type(std::string const & type)
+    {
+        if (type == "enemy_bat_blue") return EntityType::bat_blue;
+        if (type == "enemy_bat_red") return EntityType::bat_red;
+        if (type == "enemy_slime_blue") return EntityType::slime_blue;
+        if (type == "enemy_ghost") return EntityType::ghost;
+        if (type == "enemy_skeleton_white") return EntityType::skeleton_white;
+        assert(!"Unrecognized entity type");
+        return EntityType::none;
     }
 
     static std::vector<unique_ptr<Entity>> entities;
@@ -795,29 +829,49 @@ json random_map_json()
     b.player(3, -3);
 
     int const NROOM = 6;
+    int const PER_ROOM = 4;
 
-    std::vector<const char *> supplement = {
+    std::vector<const char *> cohort = {
+        "enemy_skeleton_white",
+        "enemy_skeleton_white",
+        "enemy_skeleton_white",
+        "enemy_skeleton_white",
         "enemy_skeleton_white",
         "enemy_skeleton_white",
         "enemy_slime_blue",
         "enemy_slime_blue",
+        "enemy_slime_blue",
+        "enemy_slime_blue",
+
+        "enemy_bat_blue",
+        "enemy_bat_blue",
+        "enemy_bat_blue",
+        "enemy_bat_blue",
+        "enemy_bat_blue",
         "enemy_bat_red",
-        "enemy_bat_red",
+        "enemy_ghost",
+        "enemy_ghost",
+        "enemy_ghost",
+        "enemy_ghost",
+
+        "enemy_skeleton_white",
+        "enemy_skeleton_white",
+        "enemy_ghost",
+        "enemy_ghost",
         };
+    assert(cohort.size() >= NROOM*PER_ROOM);
 
-    std::random_shuffle(BEND(supplement));
+    std::random_shuffle(BEND(cohort));
 
     int s0[NROOM] = { 3, 4, 7, 10, 11, 14 };
     int t0[NROOM] = { -12, -3, -9, -15, -6, -12 };
 
     FOR(i,NROOM) {
-        std::vector<const char *> contents = {
-            "enemy_skeleton_white",
-            "enemy_slime_blue",
-            "enemy_bat_blue",
-            supplement[i],
-            };
-        random_shuffle(BEND(contents));
+        std::vector<const char *> contents;
+        FOR(j,PER_ROOM) {
+            contents.push_back(cohort.back());
+            cohort.pop_back();
+        }
 
         b.entity(s0[i]+3, t0[i]+2, contents[0]);
         b.entity(s0[i]+5, t0[i]+2, contents[1]);
@@ -869,18 +923,7 @@ void load_map()
         e->t = rec["t"].get<int>();
 
         std::string type = rec["type"].get<std::string>();
-        if (type == "enemy_bat_blue") {
-            e->type = EntityType::bat_blue;
-        } else if (type == "enemy_bat_red") {
-            e->type = EntityType::bat_red;
-        } else if (type == "enemy_slime_blue") {
-            e->type = EntityType::slime_blue;
-        } else if (type == "enemy_skeleton_white") {
-            e->type = EntityType::skeleton_white;
-        } else {
-            assert(!"Unrecognized entity type");
-        }
-
+        e->type = Entity::deserialize_type(type);
         e->init();
 
         Entity::entities.push_back(std::move(e));

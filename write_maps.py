@@ -11,7 +11,9 @@ def emit(path, map_str):
             t = -row
 
             tile_type = ''
-            if ch == '#':
+            if ch == ' ':
+                pass
+            elif ch == '#':
                 tile_type = 'wall'
             elif ch == '+':
                 tile_type = 'door'
@@ -30,9 +32,15 @@ def emit(path, map_str):
             elif ch == 's':
                 tile_type = 'floor'
                 entities.append({'s': s, 't': t, 'type': 'enemy_slime_blue'})
+            elif ch == 'g':
+                tile_type = 'floor'
+                entities.append({'s': s, 't': t, 'type': 'enemy_ghost'})
             elif ch == 'k':
                 tile_type = 'floor'
                 entities.append({'s': s, 't': t, 'type': 'enemy_skeleton_white'})
+            else:
+                print('Unrecognized tile', ch)
+                assert 0
 
             if tile_type:
                 tiles.append({'s': s, 't': t, 'type': tile_type})
@@ -166,7 +174,7 @@ emit('data/map_proto2.json', '''
 emit('data/map_mix.json', '''
        # # # # # # # # # # # # # #
       # . # . . . . . # . . . . . #
-     # . . # . s . . . # . . b . . #
+     # . . # . g . . . # . . b . . #
     # . . . + . . . . . # . . . . . #
    # . . . . # . . s . . + . k . k . #
   # . @ . . . # . . . . . # . . . . . #
@@ -174,13 +182,13 @@ emit('data/map_mix.json', '''
     # . . . + . . . . . . . . . . . #
      # . . # . . s . . . s . . . . #
       # . # b . . . b . . . k . . #
-       # # . . s . . . s . . . . #
+       # # . . s . . . s . . g . #
         # . . . . . . . . . . . #
        # # # + # # # # # + # # #
       # . . . . . . . . . . . #
      # . b . . . . . . . k . #
     # . . s . . s . . s . . #
    # . k . . . . . . . b . #
-  # . . . . . . . . . . . #
+  # . . . . . . . . g . . #
    # # # # # # # # # # # #
 ''')
