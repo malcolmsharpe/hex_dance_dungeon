@@ -399,8 +399,8 @@ struct Entity
         if (is_inactive()) return;
 
         if (type == EntityType::ghost) {
-            int player_dist = hex_dist(s, t, player_s, player_t);
-            int player_prev_dist = hex_dist(s, t, player_prev_s, player_prev_t);
+            int player_dist = hex_dist_l2sq(s, t, player_s, player_t);
+            int player_prev_dist = hex_dist_l2sq(s, t, player_prev_s, player_prev_t);
 
             if (player_dist > player_prev_dist) {
                 hiding = false;
