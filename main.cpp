@@ -523,6 +523,12 @@ struct Entity
         }
     }
 
+    bool is_hittable()
+    {
+        if (type == EntityType::ghost && hiding) return false;
+        return true;
+    }
+
     void be_hit()
     {
         is_dead = true;
@@ -723,15 +729,13 @@ void move_player(int dir)
 
     if (i->second == TileType::floor) {
         // try to attack enemy there, if any
-        bool did_attack = false;
         Entity * e = Entity::get_at(target_s, target_t);
         if (e) {
-            did_attack = true;
-            e->be_hit();
-        }
-
-        // otherwise move
-        if (!did_attack) {
+            if (e->is_hittable()) {
+                e->be_hit();
+            }
+        } else {
+            // otherwise move
             player_s = target_s;
             player_t = target_t;
         }
