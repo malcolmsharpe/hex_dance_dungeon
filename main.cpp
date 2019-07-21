@@ -468,14 +468,14 @@ struct Entity
 
         momentum_dir = move_dir;
 
-        // We're committed to trying to move
-        moveCooldown = moveCooldownMax;
-
         int target_s = s + DIR_DS[move_dir];
         int target_t = t + DIR_DT[move_dir];
 
+        bool moveFailed = false;
+
         if (is_tile_blocking(target_s, target_t) || Entity::is_at(target_s, target_t)) {
             tweener.ease_bump_px(hex_to_pixel(s, t), hex_to_pixel(target_s, target_t));
+            moveFailed = true;
         } else if (player_s == target_s && player_t == target_t) {
             tweener.ease_bump_px(hex_to_pixel(s, t), hex_to_pixel(target_s, target_t));
             player_be_hit();
@@ -483,6 +483,10 @@ struct Entity
             tweener.ease_move_px(hex_to_pixel(s, t), hex_to_pixel(target_s, target_t));
             s = target_s;
             t = target_t;
+        }
+
+        if (!moveFailed) {
+            moveCooldown = moveCooldownMax;
         }
     }
 
