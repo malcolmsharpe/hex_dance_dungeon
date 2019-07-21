@@ -280,6 +280,7 @@ enum class EntityType
 {
     none,
     bat_blue,
+    bat_red,
     slime_blue,
     skeleton_white
 };
@@ -367,11 +368,16 @@ struct Entity
     bool is_dead = false;
     bool has_been_visible = false;
 
-    // bat_blue, slime_blue
-    int prep_dir = -1;
+    int frameTelegraph = 0;
 
-    // slime_blue, skeleton_white
-    int moveCooldown = 1;
+    int moveCooldownMax = 0;
+    int moveCooldown = 0;
+
+    int thinkCooldownMax = 0;
+    int thinkCooldown = 0;
+
+    // bat_blue, bat_red, slime_blue
+    int prep_dir = -1;
 
     // slime_blue
     int parity = 0;
@@ -388,17 +394,17 @@ struct Entity
     {
         if (is_inactive()) return;
 
+        if (moveCooldown > 0) {
+            --moveCooldown;
+            return;
+        }
+
         int move_dir = -1;
 
-        if (type == EntityType::bat_blue || type == EntityType::slime_blue) {
+        if (type == EntityType::bat_blue || type == EntityType::bat_red || type == EntityType::slime_blue) {
             move_dir = prep_dir;
             prep_dir = -1;
         } else if (type == EntityType::skeleton_white) {
-            if (moveCooldown > 0) {
-                --moveCooldown;
-                return;
-            }
-
             // If we can't get closer to the player's current or previous position, prefer standing still.
             auto best_key = make_tuple(
                     hex_dist(s, t, player_s, player_t),
@@ -446,9 +452,7 @@ struct Entity
         momentum_dir = move_dir;
 
         // We're committed to trying to move
-        if (type == EntityType::slime_blue || type == EntityType::skeleton_white) {
-            moveCooldown = 1;
-        }
+        moveCooldown = moveCooldownMax;
 
         int target_s = s + DIR_DS[move_dir];
         int target_t = t + DIR_DT[move_dir];
@@ -469,7 +473,13 @@ struct Entity
     {
         if (is_inactive()) return;
 
-        if (type == EntityType::bat_blue) {
+        if (thinkCooldown > 0) {
+            --thinkCooldown;
+            return;
+        }
+        thinkCooldown = thinkCooldownMax;
+
+        if (type == EntityType::bat_blue || type == EntityType::bat_red) {
             int num_open_dirs = 0;
             int open_dirs[NDIRS];
 
@@ -487,11 +497,6 @@ struct Entity
             int i = rand() % num_open_dirs;
             prep_dir = open_dirs[i];
         } else if (type == EntityType::slime_blue) {
-            if (moveCooldown > 0) {
-                --moveCooldown;
-                return;
-            }
-
             prep_dir = 3 * parity;
             parity = (parity+1)%2;
         }
@@ -512,12 +517,7 @@ struct Entity
         if (!should_render_tile(s,t)) return;
 
         int frame = 0;
-
-        if (type == EntityType::skeleton_white) {
-            if (moveCooldown == 0) {
-                frame = 1;
-            }
-        }
+        if (moveCooldown == 0) frame = frameTelegraph;
 
         SDL_Rect srcrect = { frame * sprite->w, 0, sprite->w, sprite->h };
         SDL_Rect dstrect = { x_px - sprite->w/2, y_px - sprite->h/2, sprite->w, sprite->h };
@@ -548,11 +548,39 @@ struct Entity
     void init()
     {
         switch (type) {
-        case EntityType::bat_blue: sprite = sprites.at("data/bat_blue.png").get(); break;
-        case EntityType::slime_blue: sprite = sprites.at("data/slime_blue.png").get(); break;
-        case EntityType::skeleton_white: sprite = sprites.at("data/skeleton_white.png").get(); break;
+        case EntityType::bat_blue: {
+            sprite = sprites.at("data/bat_blue.png").get();
+            thinkCooldownMax = 1;
+            break;
+        }
+        case EntityType::bat_red: {
+            sprite = sprites.at("data/bat_red.png").get();
+            break;
+        }
+        case EntityType::slime_blue: {
+            sprite = sprites.at("data/slime_blue.png").get();
+            thinkCooldownMax = 1;
+            break;
+        }
+        case EntityType::skeleton_white: {
+            sprite = sprites.at("data/skeleton_white.png").get();
+            moveCooldownMax = 1;
+            frameTelegraph = 1;
+            break;
+        }
         default: assert(!"Unrecognized entity type");
         }
+
+        // Reasoning behind these values:
+        // 0. On the beat an enemy becomes visible, it shouldn't move.
+        // 1. On the next beat, it _still_ shouldn't move, but it's OK if it preps.
+        // 2. The beat after that, move is OK.
+        // This way the player has 2 beats to react to newly-visible enemies.
+        //
+        // If thinkCooldown=thinkCooldownMax, then blue bat wouldn't move until beat 3,
+        // which feels weird.
+        moveCooldown = moveCooldownMax;
+        thinkCooldown = 0;
 
         tweener.set_pos_px(hex_to_pixel(s, t));
     }
@@ -569,6 +597,7 @@ struct Entity
     static void load_textures()
     {
         LoadSprite("data/bat_blue.png");
+        LoadSprite("data/bat_red.png");
         LoadSprite("data/slime_blue.png");
         LoadSprite("data/skeleton_white.png", 2);
 
@@ -772,8 +801,8 @@ json random_map_json()
         "enemy_skeleton_white",
         "enemy_slime_blue",
         "enemy_slime_blue",
-        "enemy_bat_blue",
-        "enemy_bat_blue",
+        "enemy_bat_red",
+        "enemy_bat_red",
         };
 
     std::random_shuffle(BEND(supplement));
@@ -842,6 +871,8 @@ void load_map()
         std::string type = rec["type"].get<std::string>();
         if (type == "enemy_bat_blue") {
             e->type = EntityType::bat_blue;
+        } else if (type == "enemy_bat_red") {
+            e->type = EntityType::bat_red;
         } else if (type == "enemy_slime_blue") {
             e->type = EntityType::slime_blue;
         } else if (type == "enemy_skeleton_white") {

@@ -24,6 +24,9 @@ def emit(path, map_str):
             elif ch == 'b':
                 tile_type = 'floor'
                 entities.append({'s': s, 't': t, 'type': 'enemy_bat_blue'})
+            elif ch == 'B':
+                tile_type = 'floor'
+                entities.append({'s': s, 't': t, 'type': 'enemy_bat_red'})
             elif ch == 's':
                 tile_type = 'floor'
                 entities.append({'s': s, 't': t, 'type': 'enemy_slime_blue'})
@@ -45,17 +48,17 @@ emit('data/map_bat.json', '''
             # # # #
            # . . . #
           # . . . . #
-   # # # # . . b . . # # # #
+   # # # # . . B . . # # # #
   # . . . + . . . . + . . . #
- # . . . . # . . . # . b . . #
+ # . . . . # . . . # . B . . #
 # . . @ . . # # # # . . . . . #
- # . . . . # . . . # . . b . #
+ # . . . . # . . . # . . B . #
   # . . . # . . . . # . . . #
    # + # # . . b . . # # + #
   # . . . + . . . . # . . . #
- # . . . . # . . . # . . b . #
+ # . . . . # . . . # . . B . #
 # . . b . . # # # # . b . . . #
- # . . . . # . . . # . . b . #
+ # . . . . # . . . # . . B . #
   # . . . + . b . . + . . . #
    # # # # . . . . . # # # #
           # . . b . #
