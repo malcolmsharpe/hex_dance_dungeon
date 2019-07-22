@@ -186,15 +186,6 @@ double deltaFrame_s;
 
 // Many of the hex grid routines are informed by
 // https://www.redblobgames.com/grids/hexagons
-//
-// Hex cube coordinates:
-// - down-right: +S
-// - up: +T
-// - down-left: +P
-int const NDIRS = 6;
-int const DIR_DS[NDIRS] = {  1,  0, -1, -1,  0,  1 };
-int const DIR_DT[NDIRS] = {  0,  1,  1,  0, -1, -1 };
-
 int positive_mod(int x, int m)
 {
     return (x % m + m) % m;
@@ -293,7 +284,7 @@ bool is_tile_blocking(int s, int t)
 void compute_visibility_plus()
 {
     is_visible.clear();
-    compute_visibility(player_s, player_t);
+    compute_visibility_flood(player_s, player_t);
     for (auto& h : is_visible) {
         tile_has_been_visible.insert(h);
     }
