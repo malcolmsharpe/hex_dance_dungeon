@@ -241,6 +241,11 @@ int player_s, player_t;
 // Where was the player at the start of the current turn?
 int player_prev_s, player_prev_t;
 
+struct Player {
+    int max_health=4;
+    int health=0;
+} player;
+
 enum class TileType
 {
     none,
@@ -293,6 +298,7 @@ void compute_visibility_plus()
 void player_be_hit()
 {
     fprintf(stderr, "player was hit\n");
+    player.health -= 1;
 }
 
 Sprite * telegraph_arrows[6];
@@ -570,7 +576,7 @@ struct Entity
 
         SDL_Rect srcrect = { frame * sprite->w, 0, sprite->w, sprite->h };
         SDL_Rect dstrect = { x_px - sprite->w/2, y_px - sprite->h/2, sprite->w, sprite->h };
-        SDL_RenderCopy(ren, sprite->tex.get(), &srcrect, &dstrect);
+        CHECK_SDL(SDL_RenderCopy(ren, sprite->tex.get(), &srcrect, &dstrect));
 
         // telegraph arrow
         int tile_x_px = x_px - tile_floor_w/2;
@@ -590,7 +596,7 @@ struct Entity
             }
 
             dstrect = { tile_x_px + xoff, tile_y_px + yoff, telegraph_arrows[prep_dir]->w, telegraph_arrows[prep_dir]->h };
-            SDL_RenderCopy(ren, telegraph_arrows[prep_dir]->tex.get(), NULL, &dstrect);
+            CHECK_SDL(SDL_RenderCopy(ren, telegraph_arrows[prep_dir]->tex.get(), NULL, &dstrect));
         }
     }
 
@@ -978,6 +984,7 @@ void reset_game()
     load_map();
     player_prev_s = player_s;
     player_prev_t = player_t;
+    player.health = player.max_health;
     snap_camera_to_player();
 
     tile_has_been_visible.clear();
@@ -1100,18 +1107,38 @@ void render()
         auto [ x_px, y_px ] = hex_to_screen(s, t);
 
         SDL_Rect dstrect = { x_px - tile_floor_w/2, y_px - tile_floor_h/2, tile_floor_w, tile_floor_h };
-        SDL_RenderCopy(ren, tex, NULL, &dstrect);
+        CHECK_SDL(SDL_RenderCopy(ren, tex, NULL, &dstrect));
     }
 
     //// draw enemies
     Entity::render_enemies();
 
     //// draw player
-    auto [ player_x_px, player_y_px ] = hex_to_screen(player_s, player_t);
-    int player_w_px=64, player_h_px=64;
-    CHECK_SDL(SDL_SetRenderDrawColor(ren, 255, 255, 255, 255));
-    SDL_Rect rect = { player_x_px - player_w_px/2, player_y_px - player_h_px/2, player_w_px, player_h_px };
-    CHECK_SDL(SDL_RenderFillRect(ren, &rect));
+    {
+        auto [ player_x_px, player_y_px ] = hex_to_screen(player_s, player_t);
+        int player_w_px=64, player_h_px=64;
+        CHECK_SDL(SDL_SetRenderDrawColor(ren, 255, 255, 255, 255));
+        SDL_Rect rect = { player_x_px - player_w_px/2, player_y_px - player_h_px/2, player_w_px, player_h_px };
+        CHECK_SDL(SDL_RenderFillRect(ren, &rect));
+    }
+
+    //// draw HUD
+    {
+        Sprite * heart_empty = sprites.at("data/heart_empty.png").get();
+        Sprite * heart_full = sprites.at("data/heart_full.png").get();
+
+        int xoff = 41;
+        int yoff = 44;
+        FOR(i,player.max_health) {
+            Sprite * spr = heart_empty;
+            if (i < player.health) spr = heart_full;
+
+            SDL_Rect dstrect = { xoff, yoff, spr->w, spr->h };
+            CHECK_SDL(SDL_RenderCopy(ren, spr->tex.get(), NULL, &dstrect));
+
+            xoff += spr->w + 11;
+        }
+    }
 
     //// diagnostics
     CHECK_SDL(SDL_SetRenderDrawColor(ren, 255, 255, 255, 255));
@@ -1171,6 +1198,9 @@ int main()
     tile_door[2].reset(LoadTexture(ren, "data/tile_door_2.png"));
 
     Entity::load_textures();
+
+    LoadSprite("data/heart_empty.png");
+    LoadSprite("data/heart_full.png");
 
     // init game
     warp_to_map("data/map_mix.json");
