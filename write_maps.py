@@ -4,6 +4,7 @@ def emit(path, map_str):
     map_json = {}
     tiles = []
     entities = []
+    spawns = []
 
     for row, line in enumerate(map_str.split('\n')):
         for col, ch in enumerate(line):
@@ -46,6 +47,9 @@ def emit(path, map_str):
             elif ch == 'k':
                 tile_type = 'floor'
                 entities.append({'s': s, 't': t, 'type': 'enemy_skeleton_white'})
+            elif ch == 'r':
+                tile_type = 'floor'
+                spawns.append({'s': s, 't': t})
             else:
                 print('Unrecognized tile', ch)
                 assert 0
@@ -56,6 +60,7 @@ def emit(path, map_str):
 
     map_json['tiles'] = tiles
     map_json['entities'] = entities
+    map_json['spawns'] = spawns
 
     assert 'player_s' in map_json
 
@@ -200,4 +205,26 @@ emit('data/map_mix.json', r'''
    # . k . . . . . . . b . #
   # . . . . . . . . g . . #
    # # # # # # # # # # # #
+''')
+
+emit('data/map_untitled.json', r'''
+      # # # # # # # # # # # # #
+     # # . . r . . r . . # . . #
+    # . # . . . r . . . # . . . #
+   # . . \ . . r . . . / . . r . #
+  # . . . # . . . . . # . . . . . #
+ # . @ . . # # # - # # . . r . r . #
+# . . . . # . . . . . # . . . r . . #
+ # . . . / . . r . . . \ . . . . . #
+  # . . # . . r . . . . # . . . . #
+   # - # . . r # # - # # # # - # #
+  # . . # . . # . . . . # . . . . #
+ # . . . \ . # . . . . / . . . . . #
+# . r . . # # . r . . # . . . r . . #
+ # . r . r # . . . . r # . r r . . #
+  # . r . # . . . r . . # . . r . #
+   # . . / . . r . . . . # . . . #
+    # . # . . . r . r . . \ . . #
+     # # . . r . . . . . . # . #
+      # # # # # # # # # # # # #
 ''')

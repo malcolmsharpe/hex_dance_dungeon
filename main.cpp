@@ -6,6 +6,7 @@
 #include <ctime>
 #include <fstream>
 #include <map>
+#include <random>
 #include <set>
 #include <vector>
 
@@ -169,10 +170,12 @@ double avgFrameTime_ms()
 }
 
 // main code
+std::minstd_rand prng;
+
 bool cheat_vis = false;
 
-const int WIN_WIDTH = 1600;
-const int WIN_HEIGHT = 1200;
+const int WIN_WIDTH = 1280;
+const int WIN_HEIGHT = 720;
 
 const int FONT_HEIGHT = 16;
 
@@ -705,6 +708,11 @@ struct Entity
 
         // Wake visible enemies AFTER movement,
         // so that they don't start moving instantly when seen.
+        wake_visible();
+    }
+
+    static void wake_visible()
+    {
         for (auto& e : entities) {
             if (!e->has_been_visible && is_visible.find(make_tuple(e->s, e->t)) != is_visible.end()) {
                 e->has_been_visible = true;
@@ -898,7 +906,7 @@ json random_map_json()
         };
     assert(cohort.size() >= NROOM*PER_ROOM);
 
-    std::random_shuffle(BEND(cohort));
+    std::shuffle(BEND(cohort), prng);
 
     int s0[NROOM] = { 3, 4, 7, 10, 11, 14 };
     int t0[NROOM] = { -12, -3, -9, -15, -6, -12 };
@@ -967,6 +975,47 @@ void load_map()
         Entity::entities.push_back(std::move(e));
     }
 
+    auto s_json = j.find("spawns");
+    if (s_json != j.end()) {
+        int n_spawns = s_json->size();
+
+        std::vector<const char *> cohort;
+        bool any_red_bat = false;
+        FOR(i,n_spawns) {
+            double pos = i / static_cast<double>(n_spawns);
+
+            const char * etype = "enemy_skeleton_white";
+            if (pos < 0.25) {
+                etype = "enemy_ghost";
+            } else if (pos < 0.5) {
+                etype = "enemy_slime_blue";
+            } else if (pos < 0.75) {
+                etype = "enemy_bat_blue";
+                if (!any_red_bat) {
+                    etype = "enemy_bat_red";
+                    any_red_bat = true;
+                }
+            }
+
+            cohort.push_back(etype);
+        }
+
+        std::shuffle(BEND(cohort), prng);
+
+        for (auto& rec : *s_json) {
+            unique_ptr<Entity> e(new Entity);
+            e->s = rec["s"].get<int>();
+            e->t = rec["t"].get<int>();
+
+            std::string type = cohort.back();
+            cohort.pop_back();
+            e->type = Entity::deserialize_type(type);
+            e->init();
+
+            Entity::entities.push_back(std::move(e));
+        }
+    }
+
     player_s = j["player_s"].get<int>();
     player_t = j["player_t"].get<int>();
 }
@@ -989,6 +1038,7 @@ void reset_game()
 
     tile_has_been_visible.clear();
     compute_visibility_plus();
+    Entity::wake_visible();
 }
 
 void warp_to_map(std::string map_path)
@@ -1054,9 +1104,11 @@ void update()
             } else if (e.key.keysym.sym == SDLK_6) {
                 warp_to_map("data/map_proto2.json");
             } else if (e.key.keysym.sym == SDLK_7) {
-                warp_to_map("random");
-            } else if (e.key.keysym.sym == SDLK_0) {
                 warp_to_map("data/map_mix.json");
+            } else if (e.key.keysym.sym == SDLK_8) {
+                warp_to_map("data/map_untitled.json");
+            } else if (e.key.keysym.sym == SDLK_0) {
+                warp_to_map("random");
             }
 
             // Cheats
@@ -1203,7 +1255,7 @@ int main()
     LoadSprite("data/heart_full.png");
 
     // init game
-    warp_to_map("data/map_mix.json");
+    warp_to_map("random");
 
     // IO loop
     prevFrame_ms = SDL_GetTicks();
